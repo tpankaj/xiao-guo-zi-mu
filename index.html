@@ -561,14 +561,14 @@
   <div class="row">
     <div class="drop-zone" id="zh-drop">
       <input type="file" accept=".srt" id="zh-input">
-      <span class="lang-label">中文</span>
+      <span class="lang-label" data-i18n="zh_lang">中文</span>
       <span class="label" id="zh-label">拖入中文字幕或点击</span>
       <span class="filename" id="zh-filename"></span>
       <span class="cue-count" id="zh-count"></span>
     </div>
     <div class="drop-zone" id="en-drop">
       <input type="file" accept=".srt" id="en-input">
-      <span class="lang-label">英文</span>
+      <span class="lang-label" data-i18n="en_lang">英文</span>
       <span class="label" id="en-label">拖入英文字幕或点击</span>
       <span class="filename" id="en-filename"></span>
       <span class="cue-count" id="en-count"></span>
@@ -642,6 +642,8 @@
   const TRANSLATIONS = {
     zh: {
       subtitle:        '汉字 + 拼音 + 英文',
+      zh_lang:         '中文',
+      en_lang:         '英文',
       zh_drop:         '拖入中文字幕或点击',
       en_drop:         '拖入英文字幕或点击',
       loaded:          '已加载',
@@ -670,6 +672,8 @@
     },
     en: {
       subtitle:        'Hanzi + Pinyin + English',
+      zh_lang:         'Chinese',
+      en_lang:         'English',
       zh_drop:         'Drop Chinese .srt or click',
       en_drop:         'Drop English .srt or click',
       loaded:          'Loaded',
@@ -698,6 +702,8 @@
     },
     fr: {
       subtitle:        'Hanzi + Pinyin + Anglais',
+      zh_lang:         'Chinois',
+      en_lang:         'Anglais',
       zh_drop:         'Déposer le .srt chinois ou cliquer',
       en_drop:         'Déposer le .srt anglais ou cliquer',
       loaded:          'Chargé',
