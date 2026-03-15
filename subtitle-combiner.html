@@ -50,8 +50,35 @@
     padding: 32px 40px 24px;
     border-bottom: 1px solid var(--border);
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 16px;
+  }
+
+  .lang-switcher {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+  }
+
+  .lang-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+
+  .lang-btn:hover { border-color: var(--accent-mid); color: var(--accent); }
+
+  .lang-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
   }
 
   header h1 {
@@ -522,7 +549,12 @@
 
 <header>
   <h1>小郭字幕</h1>
-  <span class="subtitle">汉子 + 拼音 + 英文</span>
+  <span class="subtitle" data-i18n="subtitle">汉字 + 拼音 + 英文</span>
+  <div class="lang-switcher">
+    <button class="lang-btn active" data-lang="zh">中文</button>
+    <button class="lang-btn" data-lang="en">EN</button>
+    <button class="lang-btn" data-lang="fr">FR</button>
+  </div>
 </header>
 
 <main>
@@ -544,21 +576,21 @@
   </div>
 
   <div class="options-row">
-    <span class="options-label">显示层：</span>
+    <span class="options-label" data-i18n="layers_label">显示层：</span>
     <label class="layer-toggle">
       <input type="checkbox" id="hanzi-toggle" checked>
       <span class="check-box">✓</span>
-      <span class="check-label">汉字</span>
+      <span class="check-label" data-i18n="hanzi">汉字</span>
     </label>
     <label class="layer-toggle">
       <input type="checkbox" id="pinyin-toggle" checked>
       <span class="check-box">✓</span>
-      <span class="check-label">拼音</span>
+      <span class="check-label" data-i18n="pinyin">拼音</span>
     </label>
     <label class="layer-toggle">
       <input type="checkbox" id="english-toggle" checked>
       <span class="check-box">✓</span>
-      <span class="check-label">英文</span>
+      <span class="check-label" data-i18n="english">英文</span>
     </label>
   </div>
 
@@ -581,15 +613,15 @@
     </div>
   </div>
 
-  <button class="generate-btn" id="generate-btn" disabled>生成</button>
+  <button class="generate-btn" id="generate-btn" disabled data-i18n="generate">生成</button>
 
   <div class="cue-list-section" id="cue-list-section">
     <div class="cue-list-header">
-      <span class="label">字幕列表</span>
+      <span class="label" data-i18n="cue_list_label">字幕列表</span>
       <span class="stats" id="list-stats"></span>
     </div>
     <div class="cue-list" id="cue-list"></div>
-    <button class="download-btn" id="download-btn">↓ 下载 .srt</button>
+    <button class="download-btn" id="download-btn" data-i18n="download">↓ 下载 .srt</button>
   </div>
 </main>
 
@@ -605,6 +637,99 @@
   let unmatchedEnIndices = [];
   let warnZhIdx = 0;
   let warnEnIdx = 0;
+  let currentLang = 'zh';
+
+  const TRANSLATIONS = {
+    zh: {
+      subtitle:        '汉字 + 拼音 + 英文',
+      zh_drop:         '拖入中文字幕或点击',
+      en_drop:         '拖入英文字幕或点击',
+      loaded:          '已加载',
+      cues_unit:       ' 条字幕',
+      layers_label:    '显示层：',
+      hanzi:           '汉字',
+      pinyin:          '拼音',
+      english:         '英文',
+      generate:        '生成',
+      cue_list_label:  '字幕列表',
+      download:        '↓ 下载 .srt',
+      edit_title:      '编辑',
+      missing_zh:      '（无中文）',
+      missing_en:      '（无英文）',
+      edit_zh_label:   '编辑中文：',
+      edit_en_label:   '编辑英文：',
+      save:            '保存',
+      cancel:          '取消',
+      badge_missing_en:'缺少英文',
+      badge_missing_zh:'缺少中文',
+      prev_title:      '上一个',
+      next_title:      '下一个',
+      warn_zh_missing: n => `${n} 条中文字幕缺少英文`,
+      warn_en_missing: n => `${n} 条英文字幕缺少中文`,
+      stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} 条匹配`,
+    },
+    en: {
+      subtitle:        'Hanzi + Pinyin + English',
+      zh_drop:         'Drop Chinese .srt or click',
+      en_drop:         'Drop English .srt or click',
+      loaded:          'Loaded',
+      cues_unit:       ' cues',
+      layers_label:    'Layers:',
+      hanzi:           'Hanzi',
+      pinyin:          'Pinyin',
+      english:         'English',
+      generate:        'Generate',
+      cue_list_label:  'Subtitle List',
+      download:        '↓ Download .srt',
+      edit_title:      'Edit',
+      missing_zh:      '(no Chinese)',
+      missing_en:      '(no English)',
+      edit_zh_label:   'Edit Chinese:',
+      edit_en_label:   'Edit English:',
+      save:            'Save',
+      cancel:          'Cancel',
+      badge_missing_en:'no English',
+      badge_missing_zh:'no Chinese',
+      prev_title:      'Previous',
+      next_title:      'Next',
+      warn_zh_missing: n => `${n} Chinese cue${n > 1 ? 's' : ''} missing English`,
+      warn_en_missing: n => `${n} English cue${n > 1 ? 's' : ''} missing Chinese`,
+      stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} matched`,
+    },
+    fr: {
+      subtitle:        'Hanzi + Pinyin + Anglais',
+      zh_drop:         'Déposer le .srt chinois ou cliquer',
+      en_drop:         'Déposer le .srt anglais ou cliquer',
+      loaded:          'Chargé',
+      cues_unit:       ' sous-titres',
+      layers_label:    'Couches :',
+      hanzi:           'Hanzi',
+      pinyin:          'Pinyin',
+      english:         'Anglais',
+      generate:        'Générer',
+      cue_list_label:  'Liste des sous-titres',
+      download:        '↓ Télécharger .srt',
+      edit_title:      'Modifier',
+      missing_zh:      '(pas de chinois)',
+      missing_en:      "(pas d'anglais)",
+      edit_zh_label:   'Modifier le chinois :',
+      edit_en_label:   "Modifier l'anglais :",
+      save:            'Enregistrer',
+      cancel:          'Annuler',
+      badge_missing_en:'anglais manquant',
+      badge_missing_zh:'chinois manquant',
+      prev_title:      'Précédent',
+      next_title:      'Suivant',
+      warn_zh_missing: n => `${n} sous-titre${n > 1 ? 's' : ''} chinois sans anglais`,
+      warn_en_missing: n => `${n} sous-titre${n > 1 ? 's' : ''} anglais sans chinois`,
+      stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} correspondance${tot !== 1 ? 's' : ''}`,
+    },
+  };
+
+  function t(key, ...args) {
+    const entry = TRANSLATIONS[currentLang][key];
+    return typeof entry === 'function' ? entry(...args) : (entry ?? key);
+  }
 
   const TIMESTAMP_RE = /^\d{2}:\d{2}:\d{2},\d+ --> \d{2}:\d{2}:\d{2},\d+$/;
 
@@ -734,8 +859,8 @@
     const meta = document.createElement('div');
     meta.className = 'cue-meta';
     meta.innerHTML = `<span class="cue-num">${idx + 1}</span><span class="cue-ts">${formatTimestamp(ts)}</span>`;
-    if (!hasEn && hasZh)  meta.innerHTML += `<span class="badge badge-orange">缺少英文</span>`;
-    if (!hasZh && hasEn)  meta.innerHTML += `<span class="badge badge-red">缺少中文</span>`;
+    if (!hasEn && hasZh)  meta.innerHTML += `<span class="badge badge-orange">${t('badge_missing_en')}</span>`;
+    if (!hasZh && hasEn)  meta.innerHTML += `<span class="badge badge-red">${t('badge_missing_zh')}</span>`;
     item.appendChild(meta);
 
     // Content rows
@@ -761,7 +886,7 @@
       if (editField === 'zh' || editField === 'en') {
         const editBtn = document.createElement('button');
         editBtn.className = 'edit-btn';
-        editBtn.title = '编辑';
+        editBtn.title = t('edit_title');
         editBtn.textContent = '✎';
         editBtn.dataset.editField = editField;
         row.appendChild(editBtn);
@@ -784,7 +909,7 @@
       if (editField) {
         const editBtn = document.createElement('button');
         editBtn.className = 'edit-btn';
-        editBtn.title = '编辑';
+        editBtn.title = t('edit_title');
         editBtn.textContent = '✎';
         editBtn.dataset.editField = editField;
         row.appendChild(editBtn);
@@ -796,7 +921,7 @@
       if (hasZh) {
         content.appendChild(makeTextRow('zh', 'cue-text-zh', zhText, 'zh'));
       } else {
-        content.appendChild(makeMissingRow('zh', '（无中文）', 'zh'));
+        content.appendChild(makeMissingRow('zh', t('missing_zh'), 'zh'));
       }
     }
 
@@ -811,7 +936,7 @@
       if (hasEn) {
         content.appendChild(makeTextRow('en', 'cue-text-en', enText, 'en'));
       } else {
-        content.appendChild(makeMissingRow('en', '（无英文）', 'en'));
+        content.appendChild(makeMissingRow('en', t('missing_en'), 'en'));
       }
     }
 
@@ -831,11 +956,11 @@
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'save-btn';
-    saveBtn.textContent = '保存';
+    saveBtn.textContent = t('save');
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'cancel-btn';
-    cancelBtn.textContent = '取消';
+    cancelBtn.textContent = t('cancel');
 
     actions.appendChild(saveBtn);
     actions.appendChild(cancelBtn);
@@ -849,7 +974,7 @@
       btn.addEventListener('click', () => {
         const field = btn.dataset.editField;
         const currentVal = field === 'zh' ? (zhText || '') : (enText || '');
-        fieldLabel.textContent = field === 'zh' ? '编辑中文：' : '编辑英文：';
+        fieldLabel.textContent = field === 'zh' ? t('edit_zh_label') : t('edit_en_label');
         textarea.value = currentVal;
         textarea.dataset.field = field;
         editArea.classList.add('visible');
@@ -893,9 +1018,9 @@
     const fnEl   = document.getElementById(id + '-filename');
     const cntEl  = document.getElementById(id + '-count');
     zone.classList.add('loaded');
-    label.textContent = '已加载';
+    label.textContent = t('loaded');
     fnEl.textContent  = filename;
-    cntEl.textContent = count + ' 条字幕';
+    cntEl.textContent = count + t('cues_unit');
 
     if (!zone.querySelector('.clear-btn')) {
       const btn = document.createElement('button');
@@ -917,7 +1042,7 @@
     const cntEl  = document.getElementById(id + '-count');
     const input  = document.getElementById(id + '-input');
     zone.classList.remove('loaded');
-    label.textContent = id === 'zh' ? '拖入中文字幕或点击' : '拖入英文字幕或点击';
+    label.textContent = t(id === 'zh' ? 'zh_drop' : 'en_drop');
     fnEl.textContent  = '';
     cntEl.textContent = '';
     input.value = '';
@@ -1042,7 +1167,7 @@
 
     if (unmatchedZhIndices.length > 0) {
       document.getElementById('warn-zh-msg').textContent =
-        `${unmatchedZhIndices.length} 条中文字幕缺少英文`;
+        t('warn_zh_missing', unmatchedZhIndices.length);
       zhRow.style.display = 'flex';
       updateWarnNav('zh');
     } else {
@@ -1051,7 +1176,7 @@
 
     if (unmatchedEnIndices.length > 0) {
       document.getElementById('warn-en-msg').textContent =
-        `${unmatchedEnIndices.length} 条英文字幕缺少中文`;
+        t('warn_en_missing', unmatchedEnIndices.length);
       enRow.style.display = 'flex';
       updateWarnNav('en');
     } else {
@@ -1061,8 +1186,7 @@
     warnBox.classList.toggle('visible',
       unmatchedZhIndices.length > 0 || unmatchedEnIndices.length > 0);
 
-    document.getElementById('list-stats').innerHTML =
-      `<span class="hi">${matched}</span> / ${total} 条匹配`;
+    document.getElementById('list-stats').innerHTML = t('stats', matched, total);
   }
 
   document.getElementById('generate-btn').addEventListener('click', runGenerate);
@@ -1085,6 +1209,53 @@
     a.download = 'combined.srt';
     a.click();
     URL.revokeObjectURL(url);
+  });
+
+  function setLang(lang) {
+    currentLang = lang;
+
+    // Static elements
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n);
+    });
+
+    // Drop zone labels (depend on loaded state)
+    ['zh', 'en'].forEach(id => {
+      const zone  = document.getElementById(id + '-drop');
+      const label = document.getElementById(id + '-label');
+      const cntEl = document.getElementById(id + '-count');
+      if (zone.classList.contains('loaded')) {
+        label.textContent = t('loaded');
+        const cues = id === 'zh' ? zhCues : enCues;
+        if (cues) cntEl.textContent = Object.keys(cues).length + t('cues_unit');
+      } else {
+        label.textContent = t(id + '_drop');
+      }
+    });
+
+    // Nav button titles
+    document.getElementById('warn-zh-prev').title = t('prev_title');
+    document.getElementById('warn-zh-next').title = t('next_title');
+    document.getElementById('warn-en-prev').title = t('prev_title');
+    document.getElementById('warn-en-next').title = t('next_title');
+
+    // Active button highlight
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+
+    // Rebuild list if visible
+    if (document.getElementById('cue-list-section').classList.contains('visible')) {
+      const cueList = document.getElementById('cue-list');
+      const savedScroll = cueList.scrollTop;
+      rebuildList();
+      updateWarnings();
+      cueList.scrollTop = savedScroll;
+    }
+  }
+
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => setLang(btn.dataset.lang));
   });
 
   setupDropZone('zh');
