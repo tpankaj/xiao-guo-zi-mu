@@ -87,12 +87,19 @@
     font-size: 22px;
     letter-spacing: 0.02em;
     color: var(--text);
+    white-space: nowrap;
   }
 
   header .subtitle {
     font-size: 11px;
     color: var(--text-dim);
     letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 500px) {
+    header { padding: 20px 16px 16px; gap: 10px; }
+    main   { padding: 24px 16px; }
   }
 
   main {
