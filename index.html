@@ -71,6 +71,7 @@
     color: var(--text-dim);
     letter-spacing: 0.05em;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
+    white-space: nowrap;
   }
 
   .lang-btn:hover { border-color: var(--accent-mid); color: var(--accent); }
@@ -95,6 +96,9 @@
     color: var(--text-dim);
     letter-spacing: 0.08em;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   @media (max-width: 500px) {
