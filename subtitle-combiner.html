@@ -713,7 +713,9 @@
   }
 
   function makeCueItem(ts, idx) {
-    const withPinyin = document.getElementById('pinyin-toggle').checked;
+    const withHanzi   = document.getElementById('hanzi-toggle').checked;
+    const withPinyin  = document.getElementById('pinyin-toggle').checked;
+    const withEnglish = document.getElementById('english-toggle').checked;
 
     const zhText = getEffectiveText(ts, 'zh');
     const enText = getEffectiveText(ts, 'en');
@@ -790,10 +792,12 @@
       return row;
     }
 
-    if (hasZh) {
-      content.appendChild(makeTextRow('zh', 'cue-text-zh', zhText, 'zh'));
-    } else {
-      content.appendChild(makeMissingRow('zh', '（无中文）', 'zh'));
+    if (withHanzi) {
+      if (hasZh) {
+        content.appendChild(makeTextRow('zh', 'cue-text-zh', zhText, 'zh'));
+      } else {
+        content.appendChild(makeMissingRow('zh', '（无中文）', 'zh'));
+      }
     }
 
     if (py !== null) {
@@ -803,10 +807,12 @@
       content.appendChild(pyRow);
     }
 
-    if (hasEn) {
-      content.appendChild(makeTextRow('en', 'cue-text-en', enText, 'en'));
-    } else {
-      content.appendChild(makeMissingRow('en', '（无英文）', 'en'));
+    if (withEnglish) {
+      if (hasEn) {
+        content.appendChild(makeTextRow('en', 'cue-text-en', enText, 'en'));
+      } else {
+        content.appendChild(makeMissingRow('en', '（无英文）', 'en'));
+      }
     }
 
     item.appendChild(content);
