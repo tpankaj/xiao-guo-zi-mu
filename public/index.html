@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小郭字幕</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pinyin-pro/3.26.0/index.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Noto+Sans+SC:wght@300;400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f7f7;
+    --border: #ddd;
+    --border-hover: #aaa;
+    --text: #1a1a1a;
+    --text-dim: #666;
+    --text-mid: #444;
+    --accent: #6b4e1a;
+    --accent-light: #f5ead6;
+    --accent-mid: #c8a96e;
+    --red: #b92c2c;
+    --red-light: #fdf0ee;
+    --orange: #c47a10;
+    --orange-light: #fff8ec;
+    --orange-border: #e0a040;
+    --green: #1a6e3a;
+    --green-light: #eaf5ee;
+    --mono: 'DM Mono', monospace;
+    --serif: 'Noto Sans SC', sans-serif;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 32px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .lang-switcher {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+  }
+
+  .lang-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+
+  .lang-btn:hover { border-color: var(--accent-mid); color: var(--accent); }
+
+  .lang-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  header h1 {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 22px;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  header .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  @media (max-width: 500px) {
+    header { padding: 20px 16px 16px; gap: 10px; }
+    main   { padding: 24px 16px; }
+  }
+
+  main {
+    flex: 1;
+    padding: 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    max-width: 960px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .drop-zone {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+    min-height: 120px;
+    text-align: center;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent-mid);
+    background: var(--accent-light);
+  }
+
+  .drop-zone.loaded {
+    border-style: solid;
+    border-color: var(--accent-mid);
+    background: var(--accent-light);
+  }
+
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-zone .label {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+
+  .drop-zone .lang-label {
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--text-mid);
+  }
+
+  .drop-zone.loaded .lang-label { color: var(--accent); }
+
+  .drop-zone .filename {
+    font-size: 11px;
+    color: var(--text-mid);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .drop-zone .cue-count { font-size: 11px; color: var(--text-dim); }
+
+  .drop-zone .clear-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+    font-family: var(--mono);
+    transition: color 0.1s;
+    z-index: 2;
+  }
+
+  .drop-zone .clear-btn:hover { color: var(--red); }
+
+  /* Layer toggles */
+  .options-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .options-label {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+
+  .layer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .layer-toggle input[type="checkbox"] { display: none; }
+
+  .check-box {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--border-hover);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: transparent;
+    transition: background 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+  }
+
+  .layer-toggle input:checked ~ .check-box {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .check-label {
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* Warning */
+  .warning-box {
+    display: none;
+    background: var(--orange-light);
+    border: 1px solid var(--orange-border);
+    border-radius: 4px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--orange);
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .warning-box.visible { display: flex; }
+
+  .warn-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .warn-msg { flex: 1; }
+
+  .warn-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .warn-nav-btn {
+    background: none;
+    border: 1px solid var(--orange-border);
+    color: var(--orange);
+    border-radius: 3px;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+    font-family: var(--mono);
+    padding: 0;
+  }
+
+  .warn-nav-btn:hover { background: var(--orange-border); color: #fff; }
+
+  .warn-nav-pos {
+    font-size: 11px;
+    min-width: 32px;
+    text-align: center;
+  }
+
+  /* Generate button */
+  .generate-btn {
+    align-self: flex-start;
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .generate-btn:hover:not(:disabled) { opacity: 0.82; }
+  .generate-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Cue list section */
+  .cue-list-section {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cue-list-section.visible { display: flex; }
+
+  .cue-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .cue-list-header .label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .cue-list-header .stats { font-size: 11px; color: var(--text-dim); }
+  .cue-list-header .stats .hi { color: var(--green); font-weight: 500; }
+
+  /* Cue items */
+  .cue-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow-y: auto;
+    max-height: 420px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .cue-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    background: #fff;
+    border-left: 3px solid transparent;
+  }
+
+  .cue-item:last-child { border-bottom: none; }
+
+  .cue-item:hover { background: var(--surface); }
+
+  .cue-item.unmatched-en-only {
+    background: var(--red-light);
+    border-left-color: var(--red);
+  }
+
+  .cue-item.unmatched-zh-only {
+    background: var(--orange-light);
+    border-left-color: var(--orange-border);
+  }
+
+  .cue-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .cue-num {
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 22px;
+  }
+
+  .cue-ts {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 2px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+  }
+
+  .badge-orange { background: var(--orange-border); color: #fff; }
+  .badge-red    { background: var(--red); color: #fff; }
+
+  /* Cue text rows */
+  .cue-content { display: flex; flex-direction: column; gap: 2px; }
+
+  .cue-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .cue-line-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 18px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .cue-text-zh {
+    font-family: var(--serif);
+    font-size: 15px;
+    color: var(--text);
+  }
+
+  .cue-text-py {
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .cue-text-en {
+    font-size: 12px;
+    color: var(--text-mid);
+    font-style: italic;
+  }
+
+  .cue-text-missing {
+    font-size: 12px;
+    color: #bbb;
+    font-style: italic;
+  }
+
+  /* Edit button — appears on row hover */
+  .edit-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 1px 4px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.1s, color 0.1s;
+    flex-shrink: 0;
+    font-family: var(--mono);
+  }
+
+  .cue-line:hover .edit-btn { opacity: 1; }
+  .edit-btn:hover { color: var(--accent); }
+
+  /* Edit area */
+  .cue-edit-area {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .cue-edit-area.visible { display: flex; }
+
+  .edit-field-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    margin-bottom: 2px;
+  }
+
+  .cue-edit-area textarea {
+    width: 100%;
+    font-family: var(--serif);
+    font-size: 14px;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--accent-mid);
+    border-radius: 3px;
+    padding: 7px 9px;
+    resize: vertical;
+    min-height: 52px;
+    outline: none;
+    line-height: 1.6;
+  }
+
+  .cue-edit-area textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+  }
+
+  .edit-actions { display: flex; gap: 8px; }
+
+  .save-btn, .cancel-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    border: 1px solid;
+    transition: opacity 0.1s;
+  }
+
+  .save-btn {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .save-btn:hover { opacity: 0.82; }
+
+  .cancel-btn {
+    background: none;
+    color: var(--text-mid);
+    border-color: var(--border-hover);
+  }
+
+  .cancel-btn:hover { background: var(--surface); }
+
+  /* Download button */
+  .download-btn {
+    align-self: flex-start;
+    background: none;
+    color: var(--green);
+    border: 1px solid var(--green);
+    border-radius: 3px;
+    padding: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .download-btn:hover { background: var(--green-light); }
+
+  /* Translate button */
+  .translate-btn {
+    align-self: flex-start;
+    background: none;
+    color: var(--accent);
+    border: 1px solid var(--accent-mid);
+    border-radius: 3px;
+    padding: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+  }
+
+  .translate-btn:hover:not(:disabled) { background: var(--accent-light); }
+  .translate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Login screen */
+  .login-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .login-box {
+    width: 300px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .login-title {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--text);
+  }
+
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .login-input {
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border-hover);
+    border-radius: 3px;
+    padding: 8px 10px;
+    outline: none;
+    letter-spacing: 0.04em;
+  }
+
+  .login-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+  }
+
+  .login-btn {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 9px 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .login-btn:hover:not(:disabled) { opacity: 0.82; }
+  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .login-error {
+    font-size: 11px;
+    color: var(--red);
+    min-height: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+  <div class="login-box">
+    <div class="login-title">小郭字幕</div>
+    <form id="login-form" class="login-form">
+      <input type="email" id="login-email" class="login-input" placeholder="Email" required autocomplete="email">
+      <input type="password" id="login-password" class="login-input" placeholder="Password" required autocomplete="current-password">
+      <button type="submit" id="login-btn" class="login-btn">Sign in</button>
+      <p id="login-error" class="login-error"></p>
+    </form>
+  </div>
+</div>
+
+<header>
+  <h1>小郭字幕</h1>
+  <span class="subtitle" data-i18n="subtitle">中文 + 拼音 + 英文</span>
+  <div class="lang-switcher">
+    <button class="lang-btn active" data-lang="zh">中文</button>
+    <button class="lang-btn" data-lang="en">EN</button>
+    <button class="lang-btn" data-lang="fr">FR</button>
+    <button id="signout-btn" class="lang-btn" style="display:none">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <div class="row">
+    <div class="drop-zone" id="zh-drop">
+      <input type="file" accept=".srt" id="zh-input">
+      <span class="lang-label" data-i18n="zh_lang">中文</span>
+      <span class="label" id="zh-label">拖入中文字幕或点击</span>
+      <span class="filename" id="zh-filename"></span>
+      <span class="cue-count" id="zh-count"></span>
+    </div>
+    <div class="drop-zone" id="en-drop">
+      <input type="file" accept=".srt" id="en-input">
+      <span class="lang-label" data-i18n="en_lang">英文</span>
+      <span class="label" id="en-label">拖入英文字幕或点击</span>
+      <span class="filename" id="en-filename"></span>
+      <span class="cue-count" id="en-count"></span>
+    </div>
+  </div>
+
+  <div id="translate-section" style="display:flex;flex-direction:column;gap:8px;">
+    <button id="translate-btn" class="translate-btn" style="display:none" data-i18n="translate_btn">Translate to English</button>
+  </div>
+
+  <div class="options-row">
+    <span class="options-label" data-i18n="layers_label">显示层：</span>
+    <label class="layer-toggle">
+      <input type="checkbox" id="chinese-toggle" checked>
+      <span class="check-box">✓</span>
+      <span class="check-label" data-i18n="chinese">中文</span>
+    </label>
+    <label class="layer-toggle">
+      <input type="checkbox" id="pinyin-toggle" checked>
+      <span class="check-box">✓</span>
+      <span class="check-label" data-i18n="pinyin">拼音</span>
+    </label>
+    <label class="layer-toggle">
+      <input type="checkbox" id="english-toggle" checked>
+      <span class="check-box">✓</span>
+      <span class="check-label" data-i18n="english">英文</span>
+    </label>
+  </div>
+
+  <div class="warning-box" id="warning-box">
+    <div class="warn-row" id="warn-zh-row" style="display:none">
+      <span class="warn-msg" id="warn-zh-msg"></span>
+      <div class="warn-nav">
+        <button class="warn-nav-btn" id="warn-zh-prev" title="上一个">‹</button>
+        <span class="warn-nav-pos" id="warn-zh-pos"></span>
+        <button class="warn-nav-btn" id="warn-zh-next" title="下一个">›</button>
+      </div>
+    </div>
+    <div class="warn-row" id="warn-en-row" style="display:none">
+      <span class="warn-msg" id="warn-en-msg"></span>
+      <div class="warn-nav">
+        <button class="warn-nav-btn" id="warn-en-prev" title="上一个">‹</button>
+        <span class="warn-nav-pos" id="warn-en-pos"></span>
+        <button class="warn-nav-btn" id="warn-en-next" title="下一个">›</button>
+      </div>
+    </div>
+  </div>
+
+  <button class="generate-btn" id="generate-btn" disabled data-i18n="generate">生成</button>
+
+  <div class="cue-list-section" id="cue-list-section">
+    <div class="cue-list-header">
+      <span class="label" data-i18n="cue_list_label">字幕列表</span>
+      <span class="stats" id="list-stats"></span>
+    </div>
+    <div class="cue-list" id="cue-list"></div>
+    <button class="download-btn" id="download-btn" data-i18n="download">↓ 下载 .srt</button>
+  </div>
+</main>
+
+<script>
+// ─── Firebase ────────────────────────────────────────────────────────────────
+// Replace these values with your project's config (Firebase Console → Project settings)
+firebase.initializeApp({
+  apiKey:    'REPLACE_WITH_YOUR_FIREBASE_API_KEY',
+  authDomain:'REPLACE_WITH_YOUR_PROJECT_ID.firebaseapp.com',
+  projectId: 'REPLACE_WITH_YOUR_PROJECT_ID',
+});
+
+// ─── App ─────────────────────────────────────────────────────────────────────
+(function() {
+  let zhCues = null;
+  let enCues = null;
+  let editedZh = {};
+  let editedEn = {};
+  let outputContent = null;
+  let pinyinCache = {};
+  let unmatchedZhIndices = [];
+  let unmatchedEnIndices = [];
+  let warnZhIdx = 0;
+  let warnEnIdx = 0;
+  let currentLang = 'zh';
+
+  const TRANSLATIONS = {
+    zh: {
+      subtitle:             '中文 + 拼音 + 英文',
+      zh_lang:              '中文',
+      en_lang:              '英文',
+      zh_drop:              '拖入中文字幕或点击',
+      en_drop:              '拖入英文字幕或点击',
+      loaded:               '已加载',
+      cues_unit:            ' 条字幕',
+      layers_label:         '显示层：',
+      chinese:              '中文',
+      pinyin:               '拼音',
+      english:              '英文',
+      generate:             '生成',
+      cue_list_label:       '字幕列表',
+      download:             '↓ 下载 .srt',
+      edit_title:           '编辑',
+      missing_zh:           '（无中文）',
+      missing_en:           '（无英文）',
+      edit_zh_label:        '编辑中文：',
+      edit_en_label:        '编辑英文：',
+      save:                 '保存',
+      cancel:               '取消',
+      badge_missing_en:     '缺少英文',
+      badge_missing_zh:     '缺少中文',
+      prev_title:           '上一个',
+      next_title:           '下一个',
+      warn_zh_missing:      n => `${n} 条中文字幕缺少英文`,
+      warn_en_missing:      n => `${n} 条英文字幕缺少中文`,
+      stats:                (m, tot) => `<span class="hi">${m}</span> / ${tot} 条匹配`,
+      translate_btn:        '翻译成英文',
+      translating_progress: (n, tot) => `翻译中… (${n} / ${tot})`,
+      translate_error:      '翻译失败',
+    },
+    en: {
+      subtitle:             'Chinese + Pinyin + English',
+      zh_lang:              'Chinese',
+      en_lang:              'English',
+      zh_drop:              'Drop Chinese .srt or click',
+      en_drop:              'Drop English .srt or click',
+      loaded:               'Loaded',
+      cues_unit:            ' cues',
+      layers_label:         'Layers:',
+      chinese:              'Chinese',
+      pinyin:               'Pinyin',
+      english:              'English',
+      generate:             'Generate',
+      cue_list_label:       'Subtitle List',
+      download:             '↓ Download .srt',
+      edit_title:           'Edit',
+      missing_zh:           '(no Chinese)',
+      missing_en:           '(no English)',
+      edit_zh_label:        'Edit Chinese:',
+      edit_en_label:        'Edit English:',
+      save:                 'Save',
+      cancel:               'Cancel',
+      badge_missing_en:     'no English',
+      badge_missing_zh:     'no Chinese',
+      prev_title:           'Previous',
+      next_title:           'Next',
+      warn_zh_missing:      n => `${n} Chinese cue${n > 1 ? 's' : ''} missing English`,
+      warn_en_missing:      n => `${n} English cue${n > 1 ? 's' : ''} missing Chinese`,
+      stats:                (m, tot) => `<span class="hi">${m}</span> / ${tot} matched`,
+      translate_btn:        'Translate to English',
+      translating_progress: (n, tot) => `Translating… (${n} / ${tot})`,
+      translate_error:      'Translation failed',
+    },
+    fr: {
+      subtitle:             'Chinois + Pinyin + Anglais',
+      zh_lang:              'Chinois',
+      en_lang:              'Anglais',
+      zh_drop:              'Déposer le .srt chinois ou cliquer',
+      en_drop:              'Déposer le .srt anglais ou cliquer',
+      loaded:               'Chargé',
+      cues_unit:            ' sous-titres',
+      layers_label:         'Couches :',
+      chinese:              'Chinois',
+      pinyin:               'Pinyin',
+      english:              'Anglais',
+      generate:             'Générer',
+      cue_list_label:       'Liste des sous-titres',
+      download:             '↓ Télécharger .srt',
+      edit_title:           'Modifier',
+      missing_zh:           '(pas de chinois)',
+      missing_en:           "(pas d'anglais)",
+      edit_zh_label:        'Modifier le chinois :',
+      edit_en_label:        "Modifier l'anglais :",
+      save:                 'Enregistrer',
+      cancel:               'Annuler',
+      badge_missing_en:     'anglais manquant',
+      badge_missing_zh:     'chinois manquant',
+      prev_title:           'Précédent',
+      next_title:           'Suivant',
+      warn_zh_missing:      n => `${n} sous-titre${n > 1 ? 's' : ''} chinois sans anglais`,
+      warn_en_missing:      n => `${n} sous-titre${n > 1 ? 's' : ''} anglais sans chinois`,
+      stats:                (m, tot) => `<span class="hi">${m}</span> / ${tot} correspondance${tot !== 1 ? 's' : ''}`,
+      translate_btn:        'Traduire en anglais',
+      translating_progress: (n, tot) => `Traduction en cours… (${n} / ${tot})`,
+      translate_error:      'Échec de la traduction',
+    },
+  };
+
+  function t(key, ...args) {
+    const entry = TRANSLATIONS[currentLang][key];
+    return typeof entry === 'function' ? entry(...args) : (entry ?? key);
+  }
+
+  const TIMESTAMP_RE = /^\d{2}:\d{2}:\d{2},\d+ --> \d{2}:\d{2}:\d{2},\d+$/;
+
+  function parseSRT(content) {
+    const blocks = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split(/\n\n+/);
+    const cues = {};
+    for (const block of blocks) {
+      const lines = block.trim().split('\n');
+      for (const line of lines) {
+        if (TIMESTAMP_RE.test(line.trim())) {
+          cues[line.trim()] = block.trim();
+          break;
+        }
+      }
+    }
+    return cues;
+  }
+
+  function getTextLines(cue) {
+    return cue.split('\n').filter(l =>
+      !TIMESTAMP_RE.test(l.trim()) && !/^\d+$/.test(l.trim()) && l.trim()
+    );
+  }
+
+  function getPinyin(text) {
+    if (!window.pinyinPro) return '';
+    if (pinyinCache[text] !== undefined) return pinyinCache[text];
+    const result = window.pinyinPro.pinyin(text, {
+      toneType: 'symbol',
+      type: 'string',
+      nonZh: 'consecutive',
+      v: false,
+      toneSandhi: false
+    });
+    pinyinCache[text] = result;
+    return result;
+  }
+
+  function formatTimestamp(ts) {
+    function fmt(t) {
+      const [hms] = t.split(',');
+      const [hStr, mStr, sStr] = hms.split(':');
+      const h = parseInt(hStr, 10);
+      const m = parseInt(mStr, 10);
+      const s = parseInt(sStr, 10);
+      if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      return `${m}:${String(s).padStart(2,'0')}`;
+    }
+    const [start, end] = ts.split(' --> ');
+    return `${fmt(start.trim())} → ${fmt(end.trim())}`;
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function getAllTimestamps() {
+    const all = new Set([
+      ...Object.keys(zhCues || {}),
+      ...Object.keys(enCues || {})
+    ]);
+    return [...all].sort();
+  }
+
+  function getEffectiveText(ts, field) {
+    if (field === 'zh') {
+      if (editedZh[ts] !== undefined) return editedZh[ts];
+      return zhCues && zhCues[ts] ? getTextLines(zhCues[ts]).join('\n') : null;
+    } else {
+      if (editedEn[ts] !== undefined) return editedEn[ts];
+      return enCues && enCues[ts] ? getTextLines(enCues[ts]).join('\n') : null;
+    }
+  }
+
+  function combine() {
+    const withChinese = document.getElementById('chinese-toggle').checked;
+    const withPinyin  = document.getElementById('pinyin-toggle').checked;
+    const withEnglish = document.getElementById('english-toggle').checked;
+
+    const allTs = getAllTimestamps();
+    const lines = [];
+    let i = 1;
+
+    for (const ts of allTs) {
+      const zhText = getEffectiveText(ts, 'zh');
+      const enText = getEffectiveText(ts, 'en');
+      const py = (withPinyin && zhText) ? getPinyin(zhText) : null;
+
+      const content = [];
+      if (withChinese && zhText)  content.push(zhText);
+      if (py)                     content.push(py);
+      if (withEnglish && enText)  content.push(enText);
+      if (content.length === 0)   continue;
+
+      lines.push(String(i));
+      lines.push(ts);
+      lines.push(...content);
+      lines.push('');
+      i++;
+    }
+
+    return lines.join('\n').trim() + '\n';
+  }
+
+  function makeCueItem(ts, idx) {
+    const withChinese = document.getElementById('chinese-toggle').checked;
+    const withPinyin  = document.getElementById('pinyin-toggle').checked;
+    const withEnglish = document.getElementById('english-toggle').checked;
+
+    const zhText = getEffectiveText(ts, 'zh');
+    const enText = getEffectiveText(ts, 'en');
+    const py = (withPinyin && zhText) ? getPinyin(zhText) : null;
+
+    const hasZh = zhText !== null && zhText !== '';
+    const hasEn = enText !== null && enText !== '';
+
+    const item = document.createElement('div');
+    item.className = 'cue-item';
+    if (!hasEn && hasZh) item.classList.add('unmatched-zh-only');
+    if (!hasZh && hasEn) item.classList.add('unmatched-en-only');
+    item.dataset.ts = ts;
+
+    const meta = document.createElement('div');
+    meta.className = 'cue-meta';
+    meta.innerHTML = `<span class="cue-num">${idx + 1}</span><span class="cue-ts">${formatTimestamp(ts)}</span>`;
+    if (!hasEn && hasZh) meta.innerHTML += `<span class="badge badge-orange">${t('badge_missing_en')}</span>`;
+    if (!hasZh && hasEn) meta.innerHTML += `<span class="badge badge-red">${t('badge_missing_zh')}</span>`;
+    item.appendChild(meta);
+
+    const content = document.createElement('div');
+    content.className = 'cue-content';
+
+    function makeTextRow(labelText, textClass, textVal, editField) {
+      const row = document.createElement('div');
+      row.className = 'cue-line';
+
+      const lbl = document.createElement('span');
+      lbl.className = 'cue-line-label';
+      lbl.textContent = labelText;
+
+      const span = document.createElement('span');
+      span.className = textClass;
+      span.dataset.field = editField;
+      span.textContent = textVal;
+
+      row.appendChild(lbl);
+      row.appendChild(span);
+
+      if (editField === 'zh' || editField === 'en') {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-btn';
+        editBtn.title = t('edit_title');
+        editBtn.textContent = '✎';
+        editBtn.dataset.editField = editField;
+        row.appendChild(editBtn);
+      }
+
+      return row;
+    }
+
+    function makeMissingRow(labelText, text, editField) {
+      const row = document.createElement('div');
+      row.className = 'cue-line';
+      const lbl = document.createElement('span');
+      lbl.className = 'cue-line-label';
+      lbl.textContent = labelText;
+      const span = document.createElement('span');
+      span.className = 'cue-text-missing';
+      span.textContent = text;
+      row.appendChild(lbl);
+      row.appendChild(span);
+      if (editField) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-btn';
+        editBtn.title = t('edit_title');
+        editBtn.textContent = '✎';
+        editBtn.dataset.editField = editField;
+        row.appendChild(editBtn);
+      }
+      return row;
+    }
+
+    if (withChinese) {
+      if (hasZh) {
+        content.appendChild(makeTextRow('zh', 'cue-text-zh', zhText, 'zh'));
+      } else {
+        content.appendChild(makeMissingRow('zh', t('missing_zh'), 'zh'));
+      }
+    }
+
+    if (py !== null) {
+      const pyRow = document.createElement('div');
+      pyRow.className = 'cue-line';
+      pyRow.innerHTML = `<span class="cue-line-label">py</span><span class="cue-text-py">${escapeHtml(py)}</span>`;
+      content.appendChild(pyRow);
+    }
+
+    if (withEnglish) {
+      if (hasEn) {
+        content.appendChild(makeTextRow('en', 'cue-text-en', enText, 'en'));
+      } else {
+        content.appendChild(makeMissingRow('en', t('missing_en'), 'en'));
+      }
+    }
+
+    item.appendChild(content);
+
+    const editArea = document.createElement('div');
+    editArea.className = 'cue-edit-area';
+
+    const fieldLabel = document.createElement('div');
+    fieldLabel.className = 'edit-field-label';
+
+    const textarea = document.createElement('textarea');
+
+    const actions = document.createElement('div');
+    actions.className = 'edit-actions';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'save-btn';
+    saveBtn.textContent = t('save');
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'cancel-btn';
+    cancelBtn.textContent = t('cancel');
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    editArea.appendChild(fieldLabel);
+    editArea.appendChild(textarea);
+    editArea.appendChild(actions);
+    item.appendChild(editArea);
+
+    item.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const field = btn.dataset.editField;
+        const currentVal = field === 'zh' ? (zhText || '') : (enText || '');
+        fieldLabel.textContent = field === 'zh' ? t('edit_zh_label') : t('edit_en_label');
+        textarea.value = currentVal;
+        textarea.dataset.field = field;
+        editArea.classList.add('visible');
+        textarea.focus();
+        textarea.select();
+      });
+    });
+
+    saveBtn.addEventListener('click', () => {
+      const field = textarea.dataset.field;
+      const newVal = textarea.value;
+      if (field === 'zh') editedZh[ts] = newVal;
+      else editedEn[ts] = newVal;
+      const cueList = document.getElementById('cue-list');
+      const savedScroll = cueList.scrollTop;
+      rebuildList();
+      outputContent = combine();
+      updateWarnings();
+      cueList.scrollTop = savedScroll;
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      editArea.classList.remove('visible');
+    });
+
+    return item;
+  }
+
+  function rebuildList() {
+    const allTs = getAllTimestamps();
+    const list = document.getElementById('cue-list');
+    list.innerHTML = '';
+    allTs.forEach((ts, idx) => {
+      list.appendChild(makeCueItem(ts, idx));
+    });
+  }
+
+  function setDropZoneLoaded(id, filename, count) {
+    const zone  = document.getElementById(id + '-drop');
+    const label = document.getElementById(id + '-label');
+    const fnEl  = document.getElementById(id + '-filename');
+    const cntEl = document.getElementById(id + '-count');
+    zone.classList.add('loaded');
+    label.textContent = t('loaded');
+    fnEl.textContent  = filename;
+    cntEl.textContent = count + t('cues_unit');
+
+    if (!zone.querySelector('.clear-btn')) {
+      const btn = document.createElement('button');
+      btn.className   = 'clear-btn';
+      btn.textContent = '×';
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearDropZone(id);
+      });
+      zone.appendChild(btn);
+    }
+  }
+
+  function clearDropZone(id) {
+    const zone  = document.getElementById(id + '-drop');
+    const label = document.getElementById(id + '-label');
+    const fnEl  = document.getElementById(id + '-filename');
+    const cntEl = document.getElementById(id + '-count');
+    const input = document.getElementById(id + '-input');
+    zone.classList.remove('loaded');
+    label.textContent = t(id === 'zh' ? 'zh_drop' : 'en_drop');
+    fnEl.textContent  = '';
+    cntEl.textContent = '';
+    input.value = '';
+    const btn = zone.querySelector('.clear-btn');
+    if (btn) btn.remove();
+    if (id === 'zh') { zhCues = null; editedZh = {}; pinyinCache = {}; }
+    else             { enCues = null; editedEn = {}; }
+    updateState();
+  }
+
+  function updateTranslateBtn() {
+    const btn = document.getElementById('translate-btn');
+    btn.style.display = (zhCues !== null && enCues === null) ? '' : 'none';
+  }
+
+  const CHUNK_SIZE = 200;
+
+  async function translateChunk(timestamps, idToken) {
+    const lines = [];
+    timestamps.forEach((ts, i) => {
+      const textLines = getTextLines(zhCues[ts]);
+      lines.push(String(i + 1));
+      lines.push(ts);
+      lines.push(...textLines);
+      lines.push('');
+    });
+    const srtChunk = lines.join('\n').trim() + '\n';
+
+    const response = await fetch('/api/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken,
+      },
+      body: JSON.stringify({ srtChunk }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + response.status));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = '';
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const json = part.slice(6);
+        if (json === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(json);
+          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+            raw += evt.delta.text;
+          }
+        } catch { /* skip malformed line */ }
+      }
+    }
+
+    return raw.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+  }
+
+  async function translateToEnglish() {
+    const user = firebase.auth().currentUser;
+    if (!user) return;
+
+    const btn = document.getElementById('translate-btn');
+    btn.disabled = true;
+
+    const allTs = Object.keys(zhCues).sort();
+    const total = allTs.length;
+    const chunks = [];
+    for (let i = 0; i < total; i += CHUNK_SIZE) {
+      chunks.push(allTs.slice(i, i + CHUNK_SIZE));
+    }
+
+    const allTranslatedCues = {};
+    try {
+      for (let ci = 0; ci < chunks.length; ci++) {
+        btn.textContent = t('translating_progress', ci * CHUNK_SIZE, total);
+        const idToken = await user.getIdToken();
+        const translatedSrt = await translateChunk(chunks[ci], idToken);
+        Object.assign(allTranslatedCues, parseSRT(translatedSrt));
+      }
+
+      enCues = allTranslatedCues;
+      editedEn = {};
+      setDropZoneLoaded('en', 'translated.srt', Object.keys(enCues).length);
+      updateState();
+    } catch (err) {
+      alert(t('translate_error') + ': ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t('translate_btn');
+    }
+  }
+
+  function updateState() {
+    const ready = zhCues !== null && enCues !== null;
+    document.getElementById('generate-btn').disabled = !ready;
+    document.getElementById('cue-list-section').classList.remove('visible');
+    document.getElementById('warning-box').classList.remove('visible');
+    outputContent = null;
+    updateTranslateBtn();
+  }
+
+  function loadFile(id, file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const cues  = parseSRT(e.target.result);
+      const count = Object.keys(cues).length;
+      if (id === 'zh') { zhCues = cues; editedZh = {}; pinyinCache = {}; }
+      else             { enCues = cues; editedEn = {}; }
+      setDropZoneLoaded(id, file.name, count);
+      updateState();
+    };
+    reader.readAsText(file);
+  }
+
+  function setupDropZone(id) {
+    const zone  = document.getElementById(id + '-drop');
+    const input = document.getElementById(id + '-input');
+
+    input.addEventListener('change', e => {
+      if (e.target.files[0]) loadFile(id, e.target.files[0]);
+    });
+
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith('.srt')) loadFile(id, file);
+    });
+  }
+
+  ['chinese-toggle', 'pinyin-toggle', 'english-toggle'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+      if (outputContent !== null) runGenerate();
+    });
+  });
+
+  function scrollToCueIdx(idx) {
+    const list = document.getElementById('cue-list');
+    const item = list.children[idx];
+    if (!item) return;
+    const itemTop = item.getBoundingClientRect().top;
+    const listTop = list.getBoundingClientRect().top;
+    list.scrollTo({ top: list.scrollTop + (itemTop - listTop) - 8, behavior: 'smooth' });
+  }
+
+  function updateWarnNav(type) {
+    const indices = type === 'zh' ? unmatchedZhIndices : unmatchedEnIndices;
+    const cur     = type === 'zh' ? warnZhIdx : warnEnIdx;
+    const total   = indices.length;
+    document.getElementById(`warn-${type}-pos`).textContent = total ? `${cur + 1} / ${total}` : '';
+  }
+
+  document.getElementById('warn-zh-prev').addEventListener('click', () => {
+    if (!unmatchedZhIndices.length) return;
+    warnZhIdx = (warnZhIdx - 1 + unmatchedZhIndices.length) % unmatchedZhIndices.length;
+    updateWarnNav('zh'); scrollToCueIdx(unmatchedZhIndices[warnZhIdx]);
+  });
+  document.getElementById('warn-zh-next').addEventListener('click', () => {
+    if (!unmatchedZhIndices.length) return;
+    warnZhIdx = (warnZhIdx + 1) % unmatchedZhIndices.length;
+    updateWarnNav('zh'); scrollToCueIdx(unmatchedZhIndices[warnZhIdx]);
+  });
+  document.getElementById('warn-en-prev').addEventListener('click', () => {
+    if (!unmatchedEnIndices.length) return;
+    warnEnIdx = (warnEnIdx - 1 + unmatchedEnIndices.length) % unmatchedEnIndices.length;
+    updateWarnNav('en'); scrollToCueIdx(unmatchedEnIndices[warnEnIdx]);
+  });
+  document.getElementById('warn-en-next').addEventListener('click', () => {
+    if (!unmatchedEnIndices.length) return;
+    warnEnIdx = (warnEnIdx + 1) % unmatchedEnIndices.length;
+    updateWarnNav('en'); scrollToCueIdx(unmatchedEnIndices[warnEnIdx]);
+  });
+
+  function updateWarnings() {
+    const allTs  = getAllTimestamps();
+    const total  = allTs.length;
+    const matched = allTs.filter(ts => zhCues && zhCues[ts] && enCues && enCues[ts]).length;
+
+    unmatchedZhIndices = allTs
+      .map((ts, i) => ({ ts, i }))
+      .filter(({ ts }) => { const zh = getEffectiveText(ts,'zh'); const en = getEffectiveText(ts,'en'); return zh && !en; })
+      .map(({ i }) => i);
+    unmatchedEnIndices = allTs
+      .map((ts, i) => ({ ts, i }))
+      .filter(({ ts }) => { const zh = getEffectiveText(ts,'zh'); const en = getEffectiveText(ts,'en'); return en && !zh; })
+      .map(({ i }) => i);
+
+    warnZhIdx = Math.min(warnZhIdx, Math.max(0, unmatchedZhIndices.length - 1));
+    warnEnIdx = Math.min(warnEnIdx, Math.max(0, unmatchedEnIndices.length - 1));
+
+    const warnBox = document.getElementById('warning-box');
+    const zhRow   = document.getElementById('warn-zh-row');
+    const enRow   = document.getElementById('warn-en-row');
+
+    if (unmatchedZhIndices.length > 0) {
+      document.getElementById('warn-zh-msg').textContent = t('warn_zh_missing', unmatchedZhIndices.length);
+      zhRow.style.display = 'flex';
+      updateWarnNav('zh');
+    } else {
+      zhRow.style.display = 'none';
+    }
+
+    if (unmatchedEnIndices.length > 0) {
+      document.getElementById('warn-en-msg').textContent = t('warn_en_missing', unmatchedEnIndices.length);
+      enRow.style.display = 'flex';
+      updateWarnNav('en');
+    } else {
+      enRow.style.display = 'none';
+    }
+
+    warnBox.classList.toggle('visible', unmatchedZhIndices.length > 0 || unmatchedEnIndices.length > 0);
+    document.getElementById('list-stats').innerHTML = t('stats', matched, total);
+  }
+
+  document.getElementById('generate-btn').addEventListener('click', runGenerate);
+
+  function runGenerate() {
+    outputContent = combine();
+    rebuildList();
+    warnZhIdx = 0;
+    warnEnIdx = 0;
+    updateWarnings();
+    document.getElementById('cue-list-section').classList.add('visible');
+  }
+
+  document.getElementById('download-btn').addEventListener('click', () => {
+    if (!outputContent) return;
+    const blob = new Blob([outputContent], { type: 'text/plain' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    const withChinese = document.getElementById('chinese-toggle').checked;
+    const withPinyin  = document.getElementById('pinyin-toggle').checked;
+    const withEnglish = document.getElementById('english-toggle').checked;
+    let filename;
+    if (withChinese && withPinyin && withEnglish) filename = '三语';
+    else if (withChinese && withPinyin)           filename = '中拼';
+    else if (withChinese && withEnglish)          filename = '中英';
+    else if (withPinyin && withEnglish)           filename = '拼英';
+    else if (withChinese)                         filename = '中文';
+    else if (withPinyin)                          filename = '拼音';
+    else if (withEnglish)                         filename = '英文';
+    else                                          filename = 'combined';
+    a.download = filename + '.srt';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  function setLang(lang) {
+    currentLang = lang;
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n);
+    });
+
+    ['zh', 'en'].forEach(id => {
+      const zone  = document.getElementById(id + '-drop');
+      const label = document.getElementById(id + '-label');
+      const cntEl = document.getElementById(id + '-count');
+      if (zone.classList.contains('loaded')) {
+        label.textContent = t('loaded');
+        const cues = id === 'zh' ? zhCues : enCues;
+        if (cues) cntEl.textContent = Object.keys(cues).length + t('cues_unit');
+      } else {
+        label.textContent = t(id + '_drop');
+      }
+    });
+
+    document.getElementById('warn-zh-prev').title = t('prev_title');
+    document.getElementById('warn-zh-next').title = t('next_title');
+    document.getElementById('warn-en-prev').title = t('prev_title');
+    document.getElementById('warn-en-next').title = t('next_title');
+
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+
+    if (document.getElementById('cue-list-section').classList.contains('visible')) {
+      const cueList = document.getElementById('cue-list');
+      const savedScroll = cueList.scrollTop;
+      rebuildList();
+      updateWarnings();
+      cueList.scrollTop = savedScroll;
+    }
+  }
+
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    if (btn.dataset.lang) btn.addEventListener('click', () => setLang(btn.dataset.lang));
+  });
+
+  setupDropZone('zh');
+  setupDropZone('en');
+
+  document.getElementById('translate-btn').addEventListener('click', translateToEnglish);
+})();
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+firebase.auth().onAuthStateChanged(user => {
+  document.getElementById('login-screen').style.display = user ? 'none' : 'flex';
+  document.getElementById('signout-btn').style.display  = user ? ''     : 'none';
+});
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn   = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  btn.disabled = true;
+  errEl.textContent = '';
+  try {
+    await firebase.auth().signInWithEmailAndPassword(
+      document.getElementById('login-email').value,
+      document.getElementById('login-password').value,
+    );
+  } catch (err) {
+    errEl.textContent = err.message;
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('signout-btn').addEventListener('click', () => firebase.auth().signOut());
+</script>
+</body>
+</html>
