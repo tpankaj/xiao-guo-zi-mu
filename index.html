@@ -560,7 +560,7 @@
 
 <header>
   <h1>小郭字幕</h1>
-  <span class="subtitle" data-i18n="subtitle">汉字 + 拼音 + 英文</span>
+  <span class="subtitle" data-i18n="subtitle">中文 + 拼音 + 英文</span>
   <div class="lang-switcher">
     <button class="lang-btn active" data-lang="zh">中文</button>
     <button class="lang-btn" data-lang="en">EN</button>
@@ -589,9 +589,9 @@
   <div class="options-row">
     <span class="options-label" data-i18n="layers_label">显示层：</span>
     <label class="layer-toggle">
-      <input type="checkbox" id="hanzi-toggle" checked>
+      <input type="checkbox" id="chinese-toggle" checked>
       <span class="check-box">✓</span>
-      <span class="check-label" data-i18n="hanzi">汉字</span>
+      <span class="check-label" data-i18n="chinese">中文</span>
     </label>
     <label class="layer-toggle">
       <input type="checkbox" id="pinyin-toggle" checked>
@@ -652,7 +652,7 @@
 
   const TRANSLATIONS = {
     zh: {
-      subtitle:        '汉字 + 拼音 + 英文',
+      subtitle:        '中文 + 拼音 + 英文',
       zh_lang:         '中文',
       en_lang:         '英文',
       zh_drop:         '拖入中文字幕或点击',
@@ -660,7 +660,7 @@
       loaded:          '已加载',
       cues_unit:       ' 条字幕',
       layers_label:    '显示层：',
-      hanzi:           '汉字',
+      chinese:         '中文',
       pinyin:          '拼音',
       english:         '英文',
       generate:        '生成',
@@ -682,7 +682,7 @@
       stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} 条匹配`,
     },
     en: {
-      subtitle:        'Hanzi + Pinyin + English',
+      subtitle:        'Chinese + Pinyin + English',
       zh_lang:         'Chinese',
       en_lang:         'English',
       zh_drop:         'Drop Chinese .srt or click',
@@ -690,7 +690,7 @@
       loaded:          'Loaded',
       cues_unit:       ' cues',
       layers_label:    'Layers:',
-      hanzi:           'Hanzi',
+      chinese:         'Chinese',
       pinyin:          'Pinyin',
       english:         'English',
       generate:        'Generate',
@@ -712,7 +712,7 @@
       stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} matched`,
     },
     fr: {
-      subtitle:        'Hanzi + Pinyin + Anglais',
+      subtitle:        'Chinois + Pinyin + Anglais',
       zh_lang:         'Chinois',
       en_lang:         'Anglais',
       zh_drop:         'Déposer le .srt chinois ou cliquer',
@@ -720,7 +720,7 @@
       loaded:          'Chargé',
       cues_unit:       ' sous-titres',
       layers_label:    'Couches :',
-      hanzi:           'Hanzi',
+      chinese:         'Chinois',
       pinyin:          'Pinyin',
       english:         'Anglais',
       generate:        'Générer',
@@ -825,7 +825,7 @@
   }
 
   function combine() {
-    const withHanzi   = document.getElementById('hanzi-toggle').checked;
+    const withChinese   = document.getElementById('chinese-toggle').checked;
     const withPinyin  = document.getElementById('pinyin-toggle').checked;
     const withEnglish = document.getElementById('english-toggle').checked;
 
@@ -839,7 +839,7 @@
       const py = (withPinyin && zhText) ? getPinyin(zhText) : null;
 
       const content = [];
-      if (withHanzi && zhText)  content.push(zhText);
+      if (withChinese && zhText)  content.push(zhText);
       if (py)                   content.push(py);
       if (withEnglish && enText) content.push(enText);
       if (content.length === 0) continue;
@@ -855,7 +855,7 @@
   }
 
   function makeCueItem(ts, idx) {
-    const withHanzi   = document.getElementById('hanzi-toggle').checked;
+    const withChinese   = document.getElementById('chinese-toggle').checked;
     const withPinyin  = document.getElementById('pinyin-toggle').checked;
     const withEnglish = document.getElementById('english-toggle').checked;
 
@@ -934,7 +934,7 @@
       return row;
     }
 
-    if (withHanzi) {
+    if (withChinese) {
       if (hasZh) {
         content.appendChild(makeTextRow('zh', 'cue-text-zh', zhText, 'zh'));
       } else {
@@ -1109,7 +1109,7 @@
     });
   }
 
-  ['hanzi-toggle', 'pinyin-toggle', 'english-toggle'].forEach(id => {
+  ['chinese-toggle', 'pinyin-toggle', 'english-toggle'].forEach(id => {
     document.getElementById(id).addEventListener('change', () => {
       if (outputContent !== null) runGenerate();
     });
@@ -1223,15 +1223,15 @@
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    const withHanzi   = document.getElementById('hanzi-toggle').checked;
+    const withChinese   = document.getElementById('chinese-toggle').checked;
     const withPinyin  = document.getElementById('pinyin-toggle').checked;
     const withEnglish = document.getElementById('english-toggle').checked;
     let filename;
-    if (withHanzi && withPinyin && withEnglish) filename = '三语';
-    else if (withHanzi && withPinyin)           filename = '中拼';
-    else if (withHanzi && withEnglish)          filename = '中英';
+    if (withChinese && withPinyin && withEnglish) filename = '三语';
+    else if (withChinese && withPinyin)           filename = '中拼';
+    else if (withChinese && withEnglish)          filename = '中英';
     else if (withPinyin && withEnglish)         filename = '拼英';
-    else if (withHanzi)                         filename = '中文';
+    else if (withChinese)                         filename = '中文';
     else if (withPinyin)                        filename = '拼音';
     else if (withEnglish)                       filename = '英文';
     else                                        filename = 'combined';
