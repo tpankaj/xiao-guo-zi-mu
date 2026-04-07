@@ -735,9 +735,9 @@
 // ─── Firebase ────────────────────────────────────────────────────────────────
 // Replace these values with your project's config (Firebase Console → Project settings)
 firebase.initializeApp({
-  apiKey:    'REPLACE_WITH_YOUR_FIREBASE_API_KEY',
-  authDomain:'REPLACE_WITH_YOUR_PROJECT_ID.firebaseapp.com',
-  projectId: 'REPLACE_WITH_YOUR_PROJECT_ID',
+  apiKey:    'AIzaSyAMSChPndbg3QRCCZNhu_5Vab7VWuINDfA',
+  authDomain:'xiao-guo-zimu.firebaseapp.com',
+  projectId: 'xiao-guo-zimu',
 });
 
 // ─── App ─────────────────────────────────────────────────────────────────────
@@ -1211,31 +1211,8 @@ firebase.initializeApp({
       throw new Error(err.error || ('HTTP ' + response.status));
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let raw = '';
-    let buf = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const parts = buf.split('\n');
-      buf = parts.pop();
-      for (const part of parts) {
-        if (!part.startsWith('data: ')) continue;
-        const json = part.slice(6);
-        if (json === '[DONE]') continue;
-        try {
-          const evt = JSON.parse(json);
-          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-            raw += evt.delta.text;
-          }
-        } catch { /* skip malformed line */ }
-      }
-    }
-
-    return raw.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+    const { text } = await response.json();
+    return text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
   }
 
   async function translateToEnglish() {

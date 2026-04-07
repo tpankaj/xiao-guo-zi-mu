@@ -53,7 +53,6 @@ exports.translate = onRequest(
       return;
     }
 
-    // Call Anthropic with streaming
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -63,8 +62,7 @@ exports.translate = onRequest(
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
-        stream: true,
+        max_tokens: 16000,
         messages: [{
           role: 'user',
           content:
@@ -82,31 +80,7 @@ exports.translate = onRequest(
       return;
     }
 
-    // Stream SSE back to the browser
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
-    const reader = anthropicRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split('\n');
-        buf = parts.pop();
-        for (const part of parts) {
-          if (part.startsWith('data: ') || part.startsWith('event: ') || part === '') {
-            res.write(part + '\n');
-          }
-        }
-      }
-    } finally {
-      res.end();
-    }
+    const data = await anthropicRes.json();
+    res.json({ text: data.content[0].text });
   },
 );
