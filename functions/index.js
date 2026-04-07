@@ -5,28 +5,47 @@ const { getAuth } = require('firebase-admin/auth');
 
 initializeApp();
 
-const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
+const anthropicKey  = defineSecret('ANTHROPIC_API_KEY');
+const allowedEmails = defineSecret('ALLOWED_EMAILS');
+
+async function verifyAndCheckAccess(req, res) {
+  const bearer = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!bearer) { res.status(401).json({ error: 'Missing token' }); return null; }
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(bearer);
+  } catch {
+    res.status(401).json({ error: 'Invalid token' }); return null;
+  }
+
+  const allowed = allowedEmails.value().split(',').map(e => e.trim().toLowerCase());
+  if (!allowed.includes((decoded.email || '').toLowerCase())) {
+    res.status(403).json({ error: 'Access denied' }); return null;
+  }
+
+  return decoded;
+}
+
+exports.verify = onRequest(
+  { secrets: [allowedEmails], timeoutSeconds: 10 },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+    const decoded = await verifyAndCheckAccess(req, res);
+    if (decoded) res.json({ ok: true });
+  },
+);
 
 exports.translate = onRequest(
-  { secrets: [anthropicKey], timeoutSeconds: 300 },
+  { secrets: [anthropicKey, allowedEmails], timeoutSeconds: 300 },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'Method not allowed' });
       return;
     }
 
-    // Verify Firebase ID token
-    const bearer = (req.headers.authorization || '').replace('Bearer ', '');
-    if (!bearer) {
-      res.status(401).json({ error: 'Missing token' });
-      return;
-    }
-    try {
-      await getAuth().verifyIdToken(bearer);
-    } catch {
-      res.status(401).json({ error: 'Invalid token' });
-      return;
-    }
+    const decoded = await verifyAndCheckAccess(req, res);
+    if (!decoded) return;
 
     const { srtChunk } = req.body;
     if (!srtChunk) {

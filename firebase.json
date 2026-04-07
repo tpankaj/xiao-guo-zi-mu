@@ -3,6 +3,7 @@
     "public": "public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
+      { "source": "/api/verify",    "function": "verify" },
       { "source": "/api/translate", "function": "translate" }
     ]
   },
