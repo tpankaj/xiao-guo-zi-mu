@@ -554,6 +554,66 @@
   }
 
   .download-btn:hover { background: var(--green-light); }
+
+  /* Translate button */
+  .translate-btn {
+    align-self: flex-start;
+    background: none;
+    color: var(--accent);
+    border: 1px solid var(--accent-mid);
+    border-radius: 3px;
+    padding: 10px 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+  }
+
+  .translate-btn:hover:not(:disabled) { background: var(--accent-light); }
+  .translate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* API key panel */
+  .api-key-panel {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .api-key-panel.visible { display: flex; }
+
+  .api-key-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+  }
+
+  .api-key-input {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border-hover);
+    border-radius: 3px;
+    padding: 5px 9px;
+    flex: 1;
+    min-width: 0;
+    outline: none;
+    letter-spacing: 0.04em;
+  }
+
+  .api-key-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+
+  .api-key-status {
+    font-size: 11px;
+    color: var(--green);
+    flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
@@ -565,6 +625,7 @@
     <button class="lang-btn active" data-lang="zh">中文</button>
     <button class="lang-btn" data-lang="en">EN</button>
     <button class="lang-btn" data-lang="fr">FR</button>
+    <button class="lang-btn" id="api-key-btn" title="API Key">⚿</button>
   </div>
 </header>
 
@@ -584,6 +645,16 @@
       <span class="filename" id="en-filename"></span>
       <span class="cue-count" id="en-count"></span>
     </div>
+  </div>
+
+  <div id="translate-section" style="display:flex;flex-direction:column;gap:8px;">
+    <div id="api-key-panel" class="api-key-panel">
+      <span class="api-key-label" data-i18n="api_key_label">Anthropic API Key</span>
+      <input type="password" id="api-key-input" class="api-key-input" placeholder="sk-ant-...">
+      <button id="api-key-save-btn" class="save-btn" data-i18n="api_key_save">Save</button>
+      <span id="api-key-status" class="api-key-status"></span>
+    </div>
+    <button id="translate-btn" class="translate-btn" style="display:none" data-i18n="translate_btn">Translate to English</button>
   </div>
 
   <div class="options-row">
@@ -680,6 +751,12 @@
       warn_zh_missing: n => `${n} 条中文字幕缺少英文`,
       warn_en_missing: n => `${n} 条英文字幕缺少中文`,
       stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} 条匹配`,
+      translate_btn:   '翻译成英文',
+      translating_progress: (n, tot) => `翻译中… (${n} / ${tot})`,
+      translate_error: '翻译失败',
+      api_key_label:   'Anthropic API 密钥',
+      api_key_save:    '保存',
+      api_key_saved:   '已保存',
     },
     en: {
       subtitle:        'Chinese + Pinyin + English',
@@ -710,6 +787,12 @@
       warn_zh_missing: n => `${n} Chinese cue${n > 1 ? 's' : ''} missing English`,
       warn_en_missing: n => `${n} English cue${n > 1 ? 's' : ''} missing Chinese`,
       stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} matched`,
+      translate_btn:   'Translate to English',
+      translating_progress: (n, tot) => `Translating… (${n} / ${tot})`,
+      translate_error: 'Translation failed',
+      api_key_label:   'Anthropic API Key',
+      api_key_save:    'Save',
+      api_key_saved:   'Saved',
     },
     fr: {
       subtitle:        'Chinois + Pinyin + Anglais',
@@ -740,6 +823,12 @@
       warn_zh_missing: n => `${n} sous-titre${n > 1 ? 's' : ''} chinois sans anglais`,
       warn_en_missing: n => `${n} sous-titre${n > 1 ? 's' : ''} anglais sans chinois`,
       stats:           (m, tot) => `<span class="hi">${m}</span> / ${tot} correspondance${tot !== 1 ? 's' : ''}`,
+      translate_btn:   'Traduire en anglais',
+      translating_progress: (n, tot) => `Traduction en cours… (${n} / ${tot})`,
+      translate_error: 'Échec de la traduction',
+      api_key_label:   'Clé API Anthropic',
+      api_key_save:    'Enregistrer',
+      api_key_saved:   'Enregistré',
     },
   };
 
@@ -1070,12 +1159,123 @@
     updateState();
   }
 
+  function loadApiKey() { return localStorage.getItem('anthropic_api_key') || ''; }
+  function saveApiKey(key) { localStorage.setItem('anthropic_api_key', key); }
+
+  function updateTranslateBtn() {
+    const btn = document.getElementById('translate-btn');
+    btn.style.display = (zhCues !== null && enCues === null) ? '' : 'none';
+  }
+
+  const CHUNK_SIZE = 200;
+
+  async function translateChunk(timestamps, apiKey) {
+    const lines = [];
+    timestamps.forEach((ts, i) => {
+      const textLines = getTextLines(zhCues[ts]);
+      lines.push(String(i + 1));
+      lines.push(ts);
+      lines.push(...textLines);
+      lines.push('');
+    });
+    const srtChunk = lines.join('\n').trim() + '\n';
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8000,
+        stream: true,
+        messages: [{
+          role: 'user',
+          content: 'I have a subtitle file that is all in chinese. Make me an identical subtitle file (same timestamps, same meaning, etc) but translate everything to English. There should be zero Chinese left, and it should have exactly the same number of subtitle entries, with exactly matching timestamps\n\n' + srtChunk
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err.error && err.error.message) || ('HTTP ' + response.status));
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = '';
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const json = part.slice(6);
+        if (json === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(json);
+          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+            raw += evt.delta.text;
+          }
+        } catch { /* skip malformed line */ }
+      }
+    }
+
+    return raw.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+  }
+
+  async function translateToEnglish() {
+    const apiKey = loadApiKey();
+    if (!apiKey) {
+      document.getElementById('api-key-panel').classList.add('visible');
+      document.getElementById('api-key-input').focus();
+      return;
+    }
+
+    const btn = document.getElementById('translate-btn');
+    btn.disabled = true;
+
+    const allTs = Object.keys(zhCues).sort();
+    const total = allTs.length;
+    const chunks = [];
+    for (let i = 0; i < total; i += CHUNK_SIZE) {
+      chunks.push(allTs.slice(i, i + CHUNK_SIZE));
+    }
+
+    const allTranslatedCues = {};
+    try {
+      for (let ci = 0; ci < chunks.length; ci++) {
+        btn.textContent = t('translating_progress', ci * CHUNK_SIZE, total);
+        const translatedSrt = await translateChunk(chunks[ci], apiKey);
+        Object.assign(allTranslatedCues, parseSRT(translatedSrt));
+      }
+
+      enCues = allTranslatedCues;
+      editedEn = {};
+      setDropZoneLoaded('en', 'translated.srt', Object.keys(enCues).length);
+      updateState();
+    } catch (err) {
+      alert(t('translate_error') + ': ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t('translate_btn');
+    }
+  }
+
   function updateState() {
     const ready = zhCues !== null && enCues !== null;
     document.getElementById('generate-btn').disabled = !ready;
     document.getElementById('cue-list-section').classList.remove('visible');
     document.getElementById('warning-box').classList.remove('visible');
     outputContent = null;
+    updateTranslateBtn();
   }
 
   function loadFile(id, file) {
@@ -1284,11 +1484,26 @@
   }
 
   document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.addEventListener('click', () => setLang(btn.dataset.lang));
+    if (btn.dataset.lang) btn.addEventListener('click', () => setLang(btn.dataset.lang));
   });
 
   setupDropZone('zh');
   setupDropZone('en');
+
+  document.getElementById('api-key-btn').addEventListener('click', () => {
+    document.getElementById('api-key-panel').classList.toggle('visible');
+  });
+
+  document.getElementById('api-key-save-btn').addEventListener('click', () => {
+    saveApiKey(document.getElementById('api-key-input').value.trim());
+    const status = document.getElementById('api-key-status');
+    status.textContent = t('api_key_saved');
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  });
+
+  document.getElementById('translate-btn').addEventListener('click', translateToEnglish);
+
+  document.getElementById('api-key-input').value = loadApiKey();
 })();
 </script>
 </body>
