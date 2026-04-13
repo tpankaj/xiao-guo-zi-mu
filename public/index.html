@@ -1184,18 +1184,18 @@ firebase.initializeApp({
     btn.style.display = (zhCues !== null && enCues === null) ? '' : 'none';
   }
 
-  const CHUNK_SIZE = 200;
+  const CHUNK_SIZE = 100;
 
-  async function translateChunk(timestamps, idToken) {
-    const lines = [];
-    timestamps.forEach((ts, i) => {
-      const textLines = getTextLines(zhCues[ts]);
-      lines.push(String(i + 1));
-      lines.push(ts);
-      lines.push(...textLines);
-      lines.push('');
-    });
-    const srtChunk = lines.join('\n').trim() + '\n';
+  const CONTEXT_SIZE = 5;
+
+  async function translateChunk(timestamps, idToken, allTs, chunkIndex) {
+    const start = chunkIndex * CHUNK_SIZE;
+    const ctxBefore = allTs.slice(Math.max(0, start - CONTEXT_SIZE), start)
+      .map(ts => ({ ts, lines: getTextLines(zhCues[ts]) }));
+    const ctxAfter = allTs.slice(start + timestamps.length, start + timestamps.length + CONTEXT_SIZE)
+      .map(ts => ({ ts, lines: getTextLines(zhCues[ts]) }));
+    const entries = timestamps.map((ts, i) => ({ id: i + 1, ts, lines: getTextLines(zhCues[ts]) }));
+    const srtChunk = JSON.stringify({ context_before: ctxBefore, entries, context_after: ctxAfter });
 
     const response = await fetch('/api/translate', {
       method: 'POST',
@@ -1212,7 +1212,15 @@ firebase.initializeApp({
     }
 
     const { text } = await response.json();
-    return text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+    const translated = JSON.parse(text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim());
+    if (translated.length !== timestamps.length) {
+      throw new Error(`Chunk mismatch: sent ${timestamps.length} entries, got ${translated.length}`);
+    }
+    const cues = {};
+    for (const entry of translated) {
+      cues[entry.ts] = [entry.id, entry.ts, ...entry.lines].join('\n');
+    }
+    return cues;
   }
 
   async function translateToEnglish() {
@@ -1234,8 +1242,8 @@ firebase.initializeApp({
       for (let ci = 0; ci < chunks.length; ci++) {
         btn.textContent = t('translating_progress', ci * CHUNK_SIZE, total);
         const idToken = await user.getIdToken();
-        const translatedSrt = await translateChunk(chunks[ci], idToken);
-        Object.assign(allTranslatedCues, parseSRT(translatedSrt));
+        const translatedCues = await translateChunk(chunks[ci], idToken, allTs, ci);
+        Object.assign(allTranslatedCues, translatedCues);
       }
 
       enCues = allTranslatedCues;
