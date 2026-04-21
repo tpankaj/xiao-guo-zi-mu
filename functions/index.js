@@ -76,63 +76,87 @@ exports.translate = onRequest(
       return;
     }
 
-    console.log('translate request', { chunkLength: srtChunk.length, email: decoded.email });
-
-    const anthropicRes = await callAnthropic(anthropicKey.value(), {
-      model: MODEL,
-      max_tokens: 8192,
-      stream: false,
-      messages: [{
-        role: 'user',
-        content:
-          'You are translating Chinese subtitle entries to English.\n\n' +
-          'Input JSON has three fields:\n' +
-          '  "context_before" – entries immediately before this chunk (for context only, do not translate)\n' +
-          '  "entries"        – the entries you must translate; each has "id", "ts", and "lines"\n' +
-          '  "context_after"  – entries immediately after this chunk (for context only, do not translate)\n\n' +
-          'Use context_before and context_after to understand sentences that continue across boundaries, ' +
-          'but do NOT include them in your output.\n\n' +
-          'Output: return ONLY a JSON array of the translated "entries". Keep every "id" and "ts" ' +
-          'exactly as given. Replace each "lines" array with the English translation. ' +
-          'Do not add, remove, merge, or reorder entries. No commentary, no markdown fences.\n\n' +
-          srtChunk,
-      }],
-    });
-
-    if (!anthropicRes.ok) {
-      const err = await anthropicRes.json().catch(() => ({}));
-      console.error('anthropic error', { status: anthropicRes.status, message: err.error?.message });
-      res.status(502).json({ error: err.error?.message || 'Upstream API error' });
-      return;
-    }
-
-    const data = await anthropicRes.json();
-
-    if (!data.content || !data.content[0] || !data.content[0].text) {
-      console.error('Invalid response structure:', JSON.stringify(data));
-      res.status(502).json({ error: 'Invalid response from Anthropic API' });
-      return;
-    }
-
-    const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
-    const tokenInfo = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
-
-    let parsed;
+    let inputEntries;
     try {
-      parsed = JSON.parse(raw);
-      console.log('translate ok', tokenInfo);
+      inputEntries = JSON.parse(srtChunk).entries.length;
     } catch {
-      const cleaned = raw.replace(/,(\s*[\]}])/g, '$1');
-      try {
-        parsed = JSON.parse(cleaned);
-        console.warn('translate: fixed malformed JSON (trailing commas)', { ...tokenInfo, tail: raw.slice(-200) });
-      } catch (e2) {
-        console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, raw });
-        res.status(502).json({ error: 'Model returned invalid JSON' });
+      res.status(400).json({ error: 'Invalid srtChunk JSON' });
+      return;
+    }
+
+    console.log('translate request', { inputEntries, chunkLength: srtChunk.length, email: decoded.email });
+
+    const prompt =
+      'You are translating Chinese subtitle entries to English.\n\n' +
+      'Input JSON has three fields:\n' +
+      '  "context_before" – entries immediately before this chunk (for context only, do not translate)\n' +
+      '  "entries"        – the entries you must translate; each has "id", "ts", and "lines"\n' +
+      '  "context_after"  – entries immediately after this chunk (for context only, do not translate)\n\n' +
+      'Use context_before and context_after to understand sentences that continue across boundaries, ' +
+      'but do NOT include them in your output.\n\n' +
+      `Output: return ONLY a valid JSON array containing exactly ${inputEntries} objects — one per input entry. ` +
+      'Keep every "id" and "ts" exactly as given. Replace each "lines" array with the English translation. ' +
+      'Do not add, remove, merge, or reorder entries. ' +
+      'The output must be valid JSON: no trailing commas, no markdown fences, no commentary.\n\n' +
+      srtChunk;
+
+    const MAX_ATTEMPTS = 3;
+    let lastError;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const anthropicRes = await callAnthropic(anthropicKey.value(), {
+        model: MODEL,
+        max_tokens: 8192,
+        stream: false,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      if (!anthropicRes.ok) {
+        const err = await anthropicRes.json().catch(() => ({}));
+        console.error('anthropic error', { attempt, status: anthropicRes.status, message: err.error?.message });
+        res.status(502).json({ error: err.error?.message || 'Upstream API error' });
         return;
       }
+
+      const data = await anthropicRes.json();
+
+      if (!data.content || !data.content[0] || !data.content[0].text) {
+        console.error('Invalid response structure:', JSON.stringify(data));
+        res.status(502).json({ error: 'Invalid response from Anthropic API' });
+        return;
+      }
+
+      const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+      const tokenInfo = { attempt, inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
+
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        const cleaned = raw.replace(/,(\s*[\]}])/g, '$1');
+        try {
+          parsed = JSON.parse(cleaned);
+          console.warn('translate: fixed malformed JSON (trailing commas)', { ...tokenInfo, tail: raw.slice(-200) });
+        } catch (e2) {
+          console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, raw });
+          lastError = 'Model returned invalid JSON';
+          continue;
+        }
+      }
+
+      const outputEntries = Array.isArray(parsed) ? parsed.length : null;
+      if (outputEntries !== inputEntries) {
+        console.warn('translate: entry count mismatch', { inputEntries, outputEntries, ...tokenInfo, srtChunk, raw });
+        lastError = `Entry count mismatch: sent ${inputEntries}, got ${outputEntries}`;
+        continue;
+      }
+
+      console.log('translate ok', { inputEntries, outputEntries, ...tokenInfo });
+      res.json({ text: JSON.stringify(parsed) });
+      return;
     }
 
-    res.json({ text: JSON.stringify(parsed) });
+    console.error('translate: all attempts failed', { inputEntries, lastError });
+    res.status(502).json({ error: lastError });
   },
 );
