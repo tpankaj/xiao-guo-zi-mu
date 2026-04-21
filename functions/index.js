@@ -114,7 +114,25 @@ exports.translate = onRequest(
       return;
     }
 
-    console.log('translate ok', { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens });
-    res.json({ text: data.content[0].text });
+    const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+    const tokenInfo = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+      console.log('translate ok', tokenInfo);
+    } catch {
+      const cleaned = raw.replace(/,(\s*[\]}])/g, '$1');
+      try {
+        parsed = JSON.parse(cleaned);
+        console.warn('translate: fixed malformed JSON (trailing commas)', { ...tokenInfo, tail: raw.slice(-200) });
+      } catch (e2) {
+        console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, raw });
+        res.status(502).json({ error: 'Model returned invalid JSON' });
+        return;
+      }
+    }
+
+    res.json({ text: JSON.stringify(parsed) });
   },
 );

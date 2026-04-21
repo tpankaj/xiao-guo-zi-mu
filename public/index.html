@@ -1212,7 +1212,7 @@ firebase.initializeApp({
     }
 
     const { text } = await response.json();
-    const translated = JSON.parse(text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim());
+    const translated = JSON.parse(text);
     if (translated.length !== timestamps.length) {
       throw new Error(`Chunk mismatch: sent ${timestamps.length} entries, got ${translated.length}`);
     }
