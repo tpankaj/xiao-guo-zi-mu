@@ -126,8 +126,12 @@ exports.translate = onRequest(
         return;
       }
 
-      const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
       const tokenInfo = { attempt, inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
+      if (data.usage?.output_tokens >= 8192) {
+        console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
+      }
+
+      const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
 
       let parsed;
       try {
