@@ -100,67 +100,58 @@ exports.translate = onRequest(
       'The output must be valid JSON: no trailing commas, no markdown fences, no commentary.\n\n' +
       srtChunk;
 
-    const MAX_ATTEMPTS = 3;
-    let lastError;
+    const anthropicRes = await callAnthropic(anthropicKey.value(), {
+      model: MODEL,
+      max_tokens: 8192,
+      stream: false,
+      messages: [{ role: 'user', content: prompt }],
+    });
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const anthropicRes = await callAnthropic(anthropicKey.value(), {
-        model: MODEL,
-        max_tokens: 8192,
-        stream: false,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      if (!anthropicRes.ok) {
-        const err = await anthropicRes.json().catch(() => ({}));
-        console.error('anthropic error', { attempt, status: anthropicRes.status, message: err.error?.message });
-        res.status(502).json({ error: err.error?.message || 'Upstream API error' });
-        return;
-      }
-
-      const data = await anthropicRes.json();
-
-      if (!data.content || !data.content[0] || !data.content[0].text) {
-        console.error('Invalid response structure:', JSON.stringify(data));
-        res.status(502).json({ error: 'Invalid response from Anthropic API' });
-        return;
-      }
-
-      const tokenInfo = { attempt, inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
-      if (data.usage?.output_tokens >= 8192) {
-        console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
-      }
-
-      const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
-
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        const cleaned = raw.replace(/,(\s*[\]}])/g, '$1');
-        try {
-          parsed = JSON.parse(cleaned);
-          console.warn('translate: fixed malformed JSON (trailing commas)', { ...tokenInfo, tail: raw.slice(-200) });
-        } catch (e2) {
-          console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, raw });
-          lastError = 'Model returned invalid JSON';
-          continue;
-        }
-      }
-
-      const outputEntries = Array.isArray(parsed) ? parsed.length : null;
-      if (outputEntries !== inputEntries) {
-        console.warn('translate: entry count mismatch', { inputEntries, outputEntries, ...tokenInfo, srtChunk, raw });
-        lastError = `Entry count mismatch: sent ${inputEntries}, got ${outputEntries}`;
-        continue;
-      }
-
-      console.log('translate ok', { inputEntries, outputEntries, ...tokenInfo });
-      res.json({ text: JSON.stringify(parsed) });
+    if (!anthropicRes.ok) {
+      const err = await anthropicRes.json().catch(() => ({}));
+      console.error('anthropic error', { status: anthropicRes.status, message: err.error?.message });
+      res.status(502).json({ error: err.error?.message || 'Upstream API error' });
       return;
     }
 
-    console.error('translate: all attempts failed', { inputEntries, lastError });
-    res.status(502).json({ error: lastError });
+    const data = await anthropicRes.json();
+
+    if (!data.content || !data.content[0] || !data.content[0].text) {
+      console.error('Invalid response structure:', JSON.stringify(data));
+      res.status(502).json({ error: 'Invalid response from Anthropic API' });
+      return;
+    }
+
+    const tokenInfo = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
+    if (data.usage?.output_tokens >= 8192) {
+      console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
+    }
+
+    const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const cleaned = raw.replace(/,(\s*[\]}])/g, '$1');
+      try {
+        parsed = JSON.parse(cleaned);
+        console.warn('translate: fixed malformed JSON (trailing commas)', { ...tokenInfo, tail: raw.slice(-200) });
+      } catch (e2) {
+        console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, raw });
+        res.status(502).json({ error: 'Model returned invalid JSON', retryable: true });
+        return;
+      }
+    }
+
+    const outputEntries = Array.isArray(parsed) ? parsed.length : null;
+    if (outputEntries !== inputEntries) {
+      console.warn('translate: entry count mismatch', { inputEntries, outputEntries, ...tokenInfo, srtChunk, raw });
+      res.status(502).json({ error: `Entry count mismatch: sent ${inputEntries}, got ${outputEntries}`, retryable: true });
+      return;
+    }
+
+    console.log('translate ok', { inputEntries, outputEntries, ...tokenInfo });
+    res.json({ text: JSON.stringify(parsed) });
   },
 );

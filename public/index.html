@@ -1188,6 +1188,8 @@ firebase.initializeApp({
 
   const CONTEXT_SIZE = 5;
 
+  const CHUNK_MAX_ATTEMPTS = 3;
+
   async function translateChunk(timestamps, idToken, allTs, chunkIndex) {
     const start = chunkIndex * CHUNK_SIZE;
     const ctxBefore = allTs.slice(Math.max(0, start - CONTEXT_SIZE), start)
@@ -1197,30 +1199,35 @@ firebase.initializeApp({
     const entries = timestamps.map((ts, i) => ({ id: i + 1, ts, lines: getTextLines(zhCues[ts]) }));
     const srtChunk = JSON.stringify({ context_before: ctxBefore, entries, context_after: ctxAfter });
 
-    const response = await fetch('/api/translate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + idToken,
-      },
-      body: JSON.stringify({ srtChunk }),
-    });
+    let lastError;
+    for (let attempt = 1; attempt <= CHUNK_MAX_ATTEMPTS; attempt++) {
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + idToken,
+        },
+        body: JSON.stringify({ srtChunk }),
+      });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || ('HTTP ' + response.status));
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        if (err.retryable && attempt < CHUNK_MAX_ATTEMPTS) {
+          lastError = err.error;
+          continue;
+        }
+        throw new Error(err.error || ('HTTP ' + response.status));
+      }
+
+      const { text } = await response.json();
+      const cues = {};
+      for (const entry of JSON.parse(text)) {
+        cues[entry.ts] = [entry.id, entry.ts, ...entry.lines].join('\n');
+      }
+      return cues;
     }
 
-    const { text } = await response.json();
-    const translated = JSON.parse(text);
-    if (translated.length !== timestamps.length) {
-      throw new Error(`Chunk mismatch: sent ${timestamps.length} entries, got ${translated.length}`);
-    }
-    const cues = {};
-    for (const entry of translated) {
-      cues[entry.ts] = [entry.id, entry.ts, ...entry.lines].join('\n');
-    }
-    return cues;
+    throw new Error(lastError);
   }
 
   async function translateToEnglish() {
