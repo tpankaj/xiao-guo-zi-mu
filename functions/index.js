@@ -10,6 +10,8 @@ const allowedEmails = defineSecret('ALLOWED_EMAILS');
 
 const MODEL = 'claude-haiku-5-5';
 const MAX_CHUNK_BYTES = 200 * 1024;
+const FETCH_TIMEOUT_MS = 60000;
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
 
 async function verifyAndCheckAccess(req, res) {
   const bearer = (req.headers.authorization || '').replace('Bearer ', '');
@@ -31,24 +33,31 @@ async function verifyAndCheckAccess(req, res) {
 }
 
 async function callAnthropic(apiKey, body) {
-  const maxRetries = 3;
-  let lastRes;
-  for (let i = 0; i < maxRetries; i++) {
-    console.log('anthropic call', { attempt: i + 1, model: body.model, chunkLength: body.messages[0].content.length });
-    lastRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    });
-    if (lastRes.status !== 529) return lastRes;
-    console.error('anthropic overloaded', { attempt: i + 1 });
-    if (i < maxRetries - 1) await new Promise(r => setTimeout(r, 2000 * Math.pow(2, i)));
+  const maxAttempts = 3;
+  let lastRes = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log('anthropic call', { attempt, model: body.model, chunkLength: body.messages[0].content.length });
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (res.ok || !RETRYABLE_STATUS.has(res.status)) return res;
+      console.error('anthropic retryable error', { attempt, status: res.status });
+      lastRes = res;
+    } catch (err) {
+      console.error('anthropic request failed', { attempt, error: err && err.message });
+    }
+    if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
   }
-  return lastRes;
+  if (lastRes) return lastRes;
+  throw new Error('Anthropic API unreachable after retries');
 }
 
 exports.verify = onRequest(
@@ -105,13 +114,19 @@ exports.translate = onRequest(
       'The output must be valid JSON: no trailing commas, no markdown fences, no commentary.\n\n' +
       srtChunk;
 
-    const anthropicRes = await callAnthropic(anthropicKey.value(), {
-      model: MODEL,
-      max_tokens: 16000,
-      output_config: { effort: 'low' },
-      stream: false,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    let anthropicRes;
+    try {
+      anthropicRes = await callAnthropic(anthropicKey.value(), {
+        model: MODEL,
+        max_tokens: 16000,
+        output_config: { effort: 'low' },
+        stream: false,
+        messages: [{ role: 'user', content: prompt }],
+      });
+    } catch {
+      res.status(502).json({ error: 'Upstream API unreachable', retryable: true });
+      return;
+    }
 
     if (!anthropicRes.ok) {
       const err = await anthropicRes.json().catch(() => ({}));
