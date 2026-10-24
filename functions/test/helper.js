@@ -19,6 +19,10 @@ const stubs = {
   secrets: { ANTHROPIC_API_KEY: 'sk-test', ALLOWED_EMAILS: 'test@example.com' },
   authEmail: 'test@example.com',
   authError: null,
+  // Shape of a real Google token: verified email + google.com provider.
+  authEmailVerified: true,
+  authProvider: 'google.com',
+  verifyArgs: null,
 };
 
 const origLoad = Module._load;
@@ -35,9 +39,14 @@ Module._load = function (request, ...rest) {
   if (request === 'firebase-admin/auth') {
     return {
       getAuth: () => ({
-        verifyIdToken: async () => {
+        verifyIdToken: async (...args) => {
+          stubs.verifyArgs = args;
           if (stubs.authError) throw stubs.authError;
-          return { email: stubs.authEmail };
+          return {
+            email: stubs.authEmail,
+            email_verified: stubs.authEmailVerified,
+            firebase: { sign_in_provider: stubs.authProvider },
+          };
         },
       }),
     };

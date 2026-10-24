@@ -79,9 +79,18 @@ async function verifyAndCheckAccess(req, res) {
 
   let decoded;
   try {
-    decoded = await getAuth().verifyIdToken(bearer);
+    // checkRevoked=true so revoked/disabled users lose access immediately.
+    decoded = await getAuth().verifyIdToken(bearer, true);
   } catch {
     res.status(401).json({ error: 'Invalid token' }); return null;
+  }
+
+  // Google-only: reject any other sign-in provider (e.g. email/password or
+  // anonymous if ever enabled in the console) and unverified emails. Real
+  // Google tokens always carry email_verified=true and provider google.com,
+  // so legitimate Google sign-ins are unaffected.
+  if (decoded.email_verified !== true || decoded.firebase?.sign_in_provider !== 'google.com') {
+    res.status(403).json({ error: 'Access denied' }); return null;
   }
 
   const allowed = allowedEmails.value().split(',').map(e => e.trim().toLowerCase());

@@ -23,6 +23,9 @@ beforeEach(() => {
   stubs.secrets = { ANTHROPIC_API_KEY: 'sk-test', ALLOWED_EMAILS: 'test@example.com' };
   stubs.authEmail = 'test@example.com';
   stubs.authError = null;
+  stubs.authEmailVerified = true;
+  stubs.authProvider = 'google.com';
+  stubs.verifyArgs = null;
   global.fetch = async () => { throw new Error('fetch not stubbed'); };
   clearLogs();
 });
@@ -71,6 +74,31 @@ describe('translate auth and validation', () => {
     const res = makeRes();
     await translate(makeReq({ body: { srtChunk: chunkJson(1) } }), res);
     assert.equal(res.statusCode, 403);
+  });
+
+  it('403 for non-Google provider even if allowlisted', async () => {
+    stubs.authProvider = 'password';
+    const calls = stubFetch([okReply(textData('[]'))]);
+    const res = makeRes();
+    await translate(makeReq({ body: { srtChunk: chunkJson(1) } }), res);
+    assert.equal(res.statusCode, 403);
+    assert.equal(calls.length, 0);
+  });
+
+  it('403 for unverified email even if allowlisted', async () => {
+    stubs.authEmailVerified = false;
+    const calls = stubFetch([okReply(textData('[]'))]);
+    const res = makeRes();
+    await translate(makeReq({ body: { srtChunk: chunkJson(1) } }), res);
+    assert.equal(res.statusCode, 403);
+    assert.equal(calls.length, 0);
+  });
+
+  it('verifies tokens with checkRevoked=true', async () => {
+    const res = makeRes();
+    await verify(makeReq({ body: {} }), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(stubs.verifyArgs[1], true);
   });
 
   it('400 on missing srtChunk', async () => {
