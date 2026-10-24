@@ -8,7 +8,7 @@ initializeApp();
 const anthropicKey  = defineSecret('ANTHROPIC_API_KEY');
 const allowedEmails = defineSecret('ALLOWED_EMAILS');
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 async function verifyAndCheckAccess(req, res) {
   const bearer = (req.headers.authorization || '').replace('Bearer ', '');
@@ -102,7 +102,8 @@ exports.translate = onRequest(
 
     const anthropicRes = await callAnthropic(anthropicKey.value(), {
       model: MODEL,
-      max_tokens: 8192,
+      max_tokens: 16000,
+      output_config: { effort: 'low' },
       stream: false,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -116,18 +117,29 @@ exports.translate = onRequest(
 
     const data = await anthropicRes.json();
 
-    if (!data.content || !data.content[0] || !data.content[0].text) {
+    if (data.stop_reason === 'refusal') {
+      console.error('translate: model refused the request', { stopReason: data.stop_reason });
+      res.status(502).json({ error: 'Model declined the request', retryable: false });
+      return;
+    }
+
+    // Haiku 5.5 uses adaptive thinking by default, so the response can start
+    // with thinking blocks. Select the text block by type, not position.
+    const textBlock = Array.isArray(data.content)
+      ? data.content.find((b) => b.type === 'text')
+      : null;
+    if (!textBlock || !textBlock.text) {
       console.error('Invalid response structure:', JSON.stringify(data));
       res.status(502).json({ error: 'Invalid response from Anthropic API' });
       return;
     }
 
     const tokenInfo = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
-    if (data.usage?.output_tokens >= 8192) {
+    if (data.stop_reason === 'max_tokens' || data.usage?.output_tokens >= 16000) {
       console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
     }
 
-    const raw = data.content[0].text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
+    const raw = textBlock.text.replace(/^```[^\n]*\n?/m, '').replace(/```\s*$/m, '').trim();
 
     let parsed;
     try {

@@ -35,7 +35,7 @@ The UI is available in Chinese, English, and French.
 ## Architecture
 
 - **Frontend**: single-page app (`public/index.html`), hosted on Firebase Hosting
-- **Backend**: Firebase Cloud Function (`functions/index.js`) that proxies translation requests to the Anthropic API (Claude Haiku)
+- **Backend**: Firebase Cloud Function (`functions/index.js`) that proxies translation requests to the Anthropic API (Claude Haiku 5.5)
 - **Auth**: Google OAuth via Firebase Authentication; only pre-approved email addresses can use the translation feature
 
 Translation is done in chunks of 75 entries. The function validates the response is well-formed JSON with the correct entry count before returning it; the client retries failed chunks up to 3 times automatically.
