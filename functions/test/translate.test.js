@@ -156,6 +156,36 @@ describe('translate happy path', () => {
     assert.equal(res.statusCode, 200);
     assert.deepEqual(JSON.parse(res.body.text), JSON.parse(entriesJson(1)));
   });
+
+  it('logs token counts and cache performance on success', async () => {
+    stubFetch([okReply({
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1000, output_tokens: 200, cache_creation_input_tokens: 600, cache_read_input_tokens: 400 },
+      content: [{ type: 'text', text: entriesJson(1) }],
+    })]);
+    const res = makeRes();
+    await translate(makeReq({ body: { srtChunk: chunkJson(1) } }), res);
+    assert.equal(res.statusCode, 200);
+    const okLog = logged.log.find((args) => args[0] === 'translate ok');
+    assert.ok(okLog);
+    assert.equal(okLog[1].inputTokens, 1000);
+    assert.equal(okLog[1].outputTokens, 200);
+    assert.equal(okLog[1].cacheCreation, 600);
+    assert.equal(okLog[1].cacheRead, 400);
+    assert.equal(okLog[1].cacheHit, true);
+    assert.equal(okLog[1].cacheReadShare, 0.4);
+  });
+
+  it('logs a cache miss when nothing was served from cache', async () => {
+    stubFetch([okReply(textData(entriesJson(1)))]);
+    const res = makeRes();
+    await translate(makeReq({ body: { srtChunk: chunkJson(1) } }), res);
+    assert.equal(res.statusCode, 200);
+    const okLog = logged.log.find((args) => args[0] === 'translate ok');
+    assert.ok(okLog);
+    assert.equal(okLog[1].cacheHit, false);
+    assert.equal(okLog[1].cacheReadShare, 0);
+  });
 });
 
 describe('translate model errors', () => {

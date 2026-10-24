@@ -60,6 +60,19 @@ const SYSTEM_PROMPT =
   'Do not add, remove, merge, or reorder entries. ' +
   'The output must be valid JSON: no trailing commas, no markdown fences, no commentary.';
 
+function usageInfo(usage = {}) {
+  const input = usage.input_tokens ?? 0;
+  const cacheRead = usage.cache_read_input_tokens ?? 0;
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheCreation: usage.cache_creation_input_tokens,
+    cacheRead: usage.cache_read_input_tokens,
+    cacheHit: cacheRead > 0,
+    cacheReadShare: input > 0 ? Math.round((cacheRead / input) * 100) / 100 : 0,
+  };
+}
+
 async function verifyAndCheckAccess(req, res) {
   const bearer = (req.headers.authorization || '').replace('Bearer ', '');
   if (!bearer) { res.status(401).json({ error: 'Missing token' }); return null; }
@@ -178,7 +191,7 @@ exports.translate = onRequest(
     const data = await anthropicRes.json();
 
     if (data.stop_reason === 'refusal') {
-      console.error('translate: model refused the request', { stopReason: data.stop_reason });
+      console.error('translate: model refused the request', { stopReason: data.stop_reason, ...usageInfo(data.usage) });
       res.status(502).json({ error: 'Model declined the request', retryable: false });
       return;
     }
@@ -192,17 +205,13 @@ exports.translate = onRequest(
       console.error('Invalid response structure:', {
         stopReason: data.stop_reason,
         blockTypes: Array.isArray(data.content) ? data.content.map((b) => b.type) : null,
+        ...usageInfo(data.usage),
       });
       res.status(502).json({ error: 'Invalid response from Anthropic API' });
       return;
     }
 
-    const tokenInfo = {
-      inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      cacheCreation: data.usage?.cache_creation_input_tokens,
-      cacheRead: data.usage?.cache_read_input_tokens,
-    };
+    const tokenInfo = usageInfo(data.usage);
     if (data.stop_reason === 'max_tokens' || data.usage?.output_tokens >= MAX_TOKENS) {
       console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
     }
