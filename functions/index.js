@@ -99,7 +99,8 @@ async function checkAppCheck(req, res) {
 async function verifyAndCheckAccess(req, res) {
   if (!await checkAppCheck(req, res)) return null;
 
-  const bearer = (req.headers.authorization || '').replace('Bearer ', '');
+  const authHeader = req.headers.authorization || '';
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
   if (!bearer) { res.status(401).json({ error: 'Missing token' }); return null; }
 
   let decoded;
@@ -174,19 +175,22 @@ exports.translate = onRequest(
     const decoded = await verifyAndCheckAccess(req, res);
     if (!decoded) return;
 
-    const { srtChunk } = req.body;
-    if (!srtChunk) {
+    const { srtChunk } = req.body || {};
+    if (typeof srtChunk !== 'string' || !srtChunk) {
       res.status(400).json({ error: 'Missing srtChunk' });
       return;
     }
-    if (srtChunk.length > MAX_CHUNK_BYTES) {
+    // Byte length, not string length: CJK text is ~3 bytes per char in UTF-8.
+    if (Buffer.byteLength(srtChunk, 'utf8') > MAX_CHUNK_BYTES) {
       res.status(413).json({ error: 'srtChunk too large' });
       return;
     }
 
     let inputEntries;
     try {
-      inputEntries = JSON.parse(srtChunk).entries.length;
+      const parsedChunk = JSON.parse(srtChunk);
+      if (!parsedChunk || !Array.isArray(parsedChunk.entries)) throw new Error('entries must be an array');
+      inputEntries = parsedChunk.entries.length;
     } catch {
       res.status(400).json({ error: 'Invalid srtChunk JSON' });
       return;

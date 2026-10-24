@@ -148,6 +148,40 @@ describe('translate auth and validation', () => {
     assert.equal(res.statusCode, 413);
     assert.equal(calls.length, 0);
   });
+
+  it('413 counts UTF-8 bytes, not chars (CJK)', async () => {
+    const calls = stubFetch([okReply(textData('[]'))]);
+    // 100k chars is under the cap as chars but ~300KB as UTF-8 bytes.
+    const big = '你'.repeat(100 * 1024);
+    const res = makeRes();
+    await translate(makeReq({ body: { srtChunk: big } }), res);
+    assert.equal(res.statusCode, 413);
+    assert.equal(calls.length, 0);
+  });
+
+  it('400 (not 500) when body is absent', async () => {
+    const calls = stubFetch([okReply(textData('[]'))]);
+    const req = makeReq({});
+    delete req.body;
+    const res = makeRes();
+    await translate(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(calls.length, 0);
+  });
+
+  it('400 when entries is not an array', async () => {
+    const calls = stubFetch([okReply(textData('[]'))]);
+    const res = makeRes();
+    await translate(makeReq({ body: { srtChunk: JSON.stringify({ entries: {} }) } }), res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(calls.length, 0);
+  });
+
+  it('401 when Authorization lacks the Bearer prefix', async () => {
+    const res = makeRes();
+    await verify(makeReq({ token: 'rawtoken', body: {} }), res);
+    assert.equal(res.statusCode, 401);
+  });
 });
 
 describe('translate happy path', () => {
