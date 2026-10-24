@@ -2,6 +2,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
+const { getAppCheck } = require('firebase-admin/app-check');
 
 initializeApp();
 
@@ -73,7 +74,31 @@ function usageInfo(usage = {}) {
   };
 }
 
+// App Check enforcement: requests without a valid App Check token are
+// rejected. (Was monitor-only while client token flow was verified live.)
+const APPCHECK_ENFORCE = true;
+
+async function checkAppCheck(req, res) {
+  const token = req.headers['x-firebase-appcheck'];
+  if (!token) {
+    console.warn('appcheck: missing token', { enforce: APPCHECK_ENFORCE });
+    if (APPCHECK_ENFORCE) { res.status(401).json({ error: 'Missing App Check token' }); return false; }
+    return true;
+  }
+  try {
+    const decoded = await getAppCheck().verifyToken(token);
+    console.log('appcheck: valid token', { appId: decoded.appId });
+    return true;
+  } catch {
+    console.warn('appcheck: invalid token', { enforce: APPCHECK_ENFORCE });
+    if (APPCHECK_ENFORCE) { res.status(401).json({ error: 'Invalid App Check token' }); return false; }
+    return true;
+  }
+}
+
 async function verifyAndCheckAccess(req, res) {
+  if (!await checkAppCheck(req, res)) return null;
+
   const bearer = (req.headers.authorization || '').replace('Bearer ', '');
   if (!bearer) { res.status(401).json({ error: 'Missing token' }); return null; }
 

@@ -45,6 +45,29 @@ describe('verify', () => {
   });
 });
 
+describe('appcheck enforcement', () => {
+  it('401 without an App Check token', async () => {
+    const res = makeRes();
+    await verify(makeReq({ body: {}, appcheck: null }), res);
+    assert.equal(res.statusCode, 401);
+    assert.ok(logged.warn.some(a => String(a[0]).includes('appcheck: missing')));
+  });
+
+  it('401 with an invalid App Check token', async () => {
+    const res = makeRes();
+    await verify(makeReq({ body: {}, headers: { 'x-firebase-appcheck': 'bogus' } }), res);
+    assert.equal(res.statusCode, 401);
+    assert.ok(logged.warn.some(a => String(a[0]).includes('appcheck: invalid')));
+  });
+
+  it('accepts a valid App Check token', async () => {
+    const res = makeRes();
+    await verify(makeReq({ body: {}, headers: { 'x-firebase-appcheck': 'valid-appcheck' } }), res);
+    assert.equal(res.statusCode, 200);
+    assert.ok(logged.log.some(a => String(a[0]).includes('appcheck: valid')));
+  });
+});
+
 describe('translate auth and validation', () => {
   it('rejects non-POST', async () => {
     stubFetch([okReply(textData('[]'))]);

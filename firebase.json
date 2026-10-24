@@ -5,6 +5,14 @@
     "rewrites": [
       { "source": "/api/verify",    "function": "verify" },
       { "source": "/api/translate", "function": "translate" }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+        ]
+      }
     ]
   },
   "functions": [

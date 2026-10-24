@@ -36,6 +36,16 @@ Module._load = function (request, ...rest) {
   if (request === 'firebase-admin/app') {
     return { initializeApp: () => ({}) };
   }
+  if (request === 'firebase-admin/app-check') {
+    return {
+      getAppCheck: () => ({
+        verifyToken: async (token) => {
+          if (token === 'valid-appcheck') return { appId: 'test-app-id' };
+          throw new Error('invalid appcheck token');
+        },
+      }),
+    };
+  }
   if (request === 'firebase-admin/auth') {
     return {
       getAuth: () => ({
@@ -56,8 +66,10 @@ Module._load = function (request, ...rest) {
 
 const handlers = require(INDEX_PATH);
 
-function makeReq({ method = 'POST', token = 'Bearer test-token', body = {} } = {}) {
-  return { method, headers: { authorization: token }, body };
+function makeReq({ method = 'POST', token = 'Bearer test-token', body = {}, headers = {}, appcheck = 'valid-appcheck' } = {}) {
+  const h = { authorization: token, ...headers };
+  if (appcheck !== null && h['x-firebase-appcheck'] === undefined) h['x-firebase-appcheck'] = appcheck;
+  return { method, headers: h, body };
 }
 
 function makeRes() {

@@ -4,9 +4,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>小郭字幕</title>
+<link rel="icon" href="data:,">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pinyin-pro/3.29.5/index.js"></script>
 <script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-auth-compat.js"></script>
+<script>
+  // Single source of truth for the Firebase config (public project
+  // identifiers, not secrets) — shared by the compat and modular SDKs.
+  window.__FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyAMSChPndbg3QRCCZNhu_5Vab7VWuINDfA',
+    authDomain: 'xiao-guo-zimu.firebaseapp.com',
+    projectId: 'xiao-guo-zimu',
+    appId: '1:730585324597:web:8682cf25e6ce1b815ca57c',
+  };
+</script>
+<!-- App Check uses the modular SDK (compat only supports reCAPTCHA v3,
+     this project uses Fraud Defense / reCAPTCHA Enterprise). -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
+  import { initializeAppCheck, ReCaptchaEnterpriseProvider, getToken } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app-check.js';
+  try {
+    // Compat and modular SDKs keep separate app registries, so App Check
+    // gets its own named modular app (tokens are per-project, name is moot).
+    const appCheck = initializeAppCheck(initializeApp(window.__FIREBASE_CONFIG, 'appcheck'), {
+      provider: new ReCaptchaEnterpriseProvider('6LeD2_0tAAAAALSe9SehxkmPKZxcx61ba7ZAuGDc'),
+      isTokenAutoRefreshEnabled: true,
+    });
+    window.__getAppCheckToken = async () => (await getToken(appCheck)).token;
+  } catch (e) {
+    console.warn('App Check init failed', e);
+  }
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Noto+Sans+SC:wght@300;400&display=swap');
 
@@ -735,11 +763,20 @@
 <script>
 // ─── Firebase ────────────────────────────────────────────────────────────────
 // Replace these values with your project's config (Firebase Console → Project settings)
-firebase.initializeApp({
-  apiKey:    'AIzaSyAMSChPndbg3QRCCZNhu_5Vab7VWuINDfA',
-  authDomain:'xiao-guo-zimu.firebaseapp.com',
-  projectId: 'xiao-guo-zimu',
-});
+firebase.initializeApp(window.__FIREBASE_CONFIG);
+
+// Plain fetch() calls are not Firebase SDK requests, so App Check tokens
+// are never attached automatically — fetch one explicitly for API calls
+// (App Check itself is initialized in the module script in <head>).
+// Returns {} on failure so requests still work while enforcement is off.
+async function getAppCheckHeader() {
+  try {
+    const token = window.__getAppCheckToken ? await window.__getAppCheckToken() : '';
+    return token ? { 'X-Firebase-AppCheck': token } : {};
+  } catch {
+    return {};
+  }
+}
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 (function() {
@@ -1174,6 +1211,7 @@ firebase.initializeApp({
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + idToken,
+          ...(await getAppCheckHeader()),
         },
         body: JSON.stringify({ srtChunk }),
       });
@@ -1469,7 +1507,7 @@ firebase.auth().onAuthStateChanged(async user => {
     const token = await user.getIdToken();
     const res   = await fetch('/api/verify', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token },
+      headers: { 'Authorization': 'Bearer ' + token, ...(await getAppCheckHeader()) },
     });
     if (!res.ok) {
       await firebase.auth().signOut();
