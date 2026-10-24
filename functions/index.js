@@ -149,12 +149,20 @@ exports.translate = onRequest(
       ? data.content.find((b) => b.type === 'text')
       : null;
     if (!textBlock || !textBlock.text) {
-      console.error('Invalid response structure:', JSON.stringify(data));
+      console.error('Invalid response structure:', {
+        stopReason: data.stop_reason,
+        blockTypes: Array.isArray(data.content) ? data.content.map((b) => b.type) : null,
+      });
       res.status(502).json({ error: 'Invalid response from Anthropic API' });
       return;
     }
 
-    const tokenInfo = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
+    const tokenInfo = {
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      cacheCreation: data.usage?.cache_creation_input_tokens,
+      cacheRead: data.usage?.cache_read_input_tokens,
+    };
     if (data.stop_reason === 'max_tokens' || data.usage?.output_tokens >= 16000) {
       console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
     }
@@ -170,7 +178,7 @@ exports.translate = onRequest(
         parsed = JSON.parse(cleaned);
         console.warn('translate: fixed malformed JSON (trailing commas)', { ...tokenInfo, tail: raw.slice(-200) });
       } catch (e2) {
-        console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, raw });
+        console.error('translate: unparseable JSON from model', { ...tokenInfo, error: e2.message, rawLength: raw.length, rawTail: raw.slice(-200) });
         res.status(502).json({ error: 'Model returned invalid JSON', retryable: true });
         return;
       }
@@ -178,7 +186,7 @@ exports.translate = onRequest(
 
     const outputEntries = Array.isArray(parsed) ? parsed.length : null;
     if (outputEntries !== inputEntries) {
-      console.warn('translate: entry count mismatch', { inputEntries, outputEntries, ...tokenInfo, srtChunk, raw });
+      console.warn('translate: entry count mismatch', { inputEntries, outputEntries, ...tokenInfo, chunkLength: srtChunk.length, rawTail: raw.slice(-200) });
       res.status(502).json({ error: `Entry count mismatch: sent ${inputEntries}, got ${outputEntries}`, retryable: true });
       return;
     }
