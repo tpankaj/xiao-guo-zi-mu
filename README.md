@@ -38,13 +38,14 @@ The UI is available in Chinese, English, and French.
 - **Backend**: Firebase Cloud Function (`functions/index.js`) that proxies translation requests to the Anthropic API (Claude Haiku 5.5)
 - **Auth**: Google OAuth via Firebase Authentication; only pre-approved email addresses can use the translation feature
 
-Translation is done in chunks of 75 entries. The function validates the response is well-formed JSON with the correct entry count before returning it; the client retries failed chunks up to 3 times automatically.
+Translation is done in chunks of 75 entries. Static instructions are sent as a cached system prompt (Anthropic prompt caching, 5-minute TTL), so repeat chunks in a file read from cache at ~10% of input cost; only the per-chunk entries travel in the user message. The function validates the response is well-formed JSON with the correct entry count before returning it; the client retries failed chunks up to 3 times automatically. Upstream 429/5xx errors are retried server-side with backoff, subtitle text is never written to Cloud logs (only lengths and tails), and oversize chunks are rejected with 413.
 
 ## Development
 
 ```bash
 npm install -g firebase-tools
 firebase login
+(cd functions && npm test)    # backend test suite (node:test, no network)
 firebase serve          # local dev server
 firebase deploy         # deploy functions + hosting
 ```
