@@ -787,6 +787,7 @@ firebase.initializeApp({
       translate_btn:        '翻译成英文',
       translating_progress: (n, tot) => `翻译中… (${n} / ${tot})`,
       translate_error:      '翻译失败',
+      file_too_large:       '文件太大（上限 2 MB）',
     },
     en: {
       subtitle:             'Chinese + Pinyin + English',
@@ -820,6 +821,7 @@ firebase.initializeApp({
       translate_btn:        'Translate to English',
       translating_progress: (n, tot) => `Translating… (${n} / ${tot})`,
       translate_error:      'Translation failed',
+      file_too_large:       'File too large (2 MB limit)',
     },
     fr: {
       subtitle:             'Chinois + Pinyin + Anglais',
@@ -853,6 +855,7 @@ firebase.initializeApp({
       translate_btn:        'Traduire en anglais',
       translating_progress: (n, tot) => `Traduction en cours… (${n} / ${tot})`,
       translate_error:      'Échec de la traduction',
+      file_too_large:       'Fichier trop volumineux (limite de 2 Mo)',
     },
   };
 
@@ -1188,6 +1191,8 @@ firebase.initializeApp({
 
   const CONTEXT_SIZE = 5;
 
+  const MAX_FILE_BYTES = 2 * 1024 * 1024;
+
   const CHUNK_MAX_ATTEMPTS = 3;
 
   async function translateChunk(timestamps, idToken, allTs, chunkIndex) {
@@ -1275,6 +1280,11 @@ firebase.initializeApp({
   }
 
   function loadFile(id, file) {
+    if (file.size > MAX_FILE_BYTES) {
+      document.getElementById(id + '-input').value = '';
+      alert(t('file_too_large'));
+      return;
+    }
     const reader = new FileReader();
     reader.onload = e => {
       const cues  = parseSRT(e.target.result);
