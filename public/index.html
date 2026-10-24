@@ -1193,7 +1193,31 @@ firebase.initializeApp({
 
   const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
+  const TRANSLATE_CONCURRENCY = 10;
+
   const CHUNK_MAX_ATTEMPTS = 3;
+
+  async function mapWithConcurrency(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    let failed = false;
+    const workers = Array.from(
+      { length: Math.min(Math.max(limit, 1), items.length) },
+      async () => {
+        while (!failed && next < items.length) {
+          const i = next++;
+          try {
+            results[i] = await fn(items[i], i);
+          } catch (err) {
+            failed = true;
+            throw err;
+          }
+        }
+      }
+    );
+    await Promise.all(workers);
+    return results;
+  }
 
   async function translateChunk(timestamps, idToken, allTs, chunkIndex) {
     const start = chunkIndex * CHUNK_SIZE;
@@ -1250,13 +1274,16 @@ firebase.initializeApp({
     }
 
     const allTranslatedCues = {};
+    let doneCues = 0;
     try {
-      for (let ci = 0; ci < chunks.length; ci++) {
-        btn.textContent = t('translating_progress', ci * CHUNK_SIZE, total);
+      const translated = await mapWithConcurrency(chunks, TRANSLATE_CONCURRENCY, async (timestamps, ci) => {
         const idToken = await user.getIdToken();
-        const translatedCues = await translateChunk(chunks[ci], idToken, allTs, ci);
-        Object.assign(allTranslatedCues, translatedCues);
-      }
+        const cues = await translateChunk(timestamps, idToken, allTs, ci);
+        doneCues += timestamps.length;
+        btn.textContent = t('translating_progress', doneCues, total);
+        return cues;
+      });
+      for (const cues of translated) Object.assign(allTranslatedCues, cues);
 
       enCues = allTranslatedCues;
       editedEn = {};
