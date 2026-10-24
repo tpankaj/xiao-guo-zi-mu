@@ -9,6 +9,7 @@ const anthropicKey  = defineSecret('ANTHROPIC_API_KEY');
 const allowedEmails = defineSecret('ALLOWED_EMAILS');
 
 const MODEL = 'claude-haiku-5-5';
+const MAX_CHUNK_BYTES = 200 * 1024;
 
 async function verifyAndCheckAccess(req, res) {
   const bearer = (req.headers.authorization || '').replace('Bearer ', '');
@@ -73,6 +74,10 @@ exports.translate = onRequest(
     const { srtChunk } = req.body;
     if (!srtChunk) {
       res.status(400).json({ error: 'Missing srtChunk' });
+      return;
+    }
+    if (srtChunk.length > MAX_CHUNK_BYTES) {
+      res.status(413).json({ error: 'srtChunk too large' });
       return;
     }
 
