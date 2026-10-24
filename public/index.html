@@ -873,7 +873,8 @@ firebase.initializeApp({
       const lines = block.trim().split('\n');
       for (const line of lines) {
         if (TIMESTAMP_RE.test(line.trim())) {
-          cues[line.trim()] = block.trim();
+          const ts = line.trim();
+          cues[ts] = cues[ts] ? cues[ts] + '\n' + block.trim() : block.trim();
           break;
         }
       }
