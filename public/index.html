@@ -731,6 +731,7 @@
   </div>
 </main>
 
+<script src="srt.js"></script>
 <script>
 // ─── Firebase ────────────────────────────────────────────────────────────────
 // Replace these values with your project's config (Firebase Console → Project settings)
@@ -864,29 +865,7 @@ firebase.initializeApp({
     return typeof entry === 'function' ? entry(...args) : (entry ?? key);
   }
 
-  const TIMESTAMP_RE = /^\d{2}:\d{2}:\d{2},\d+ --> \d{2}:\d{2}:\d{2},\d+$/;
 
-  function parseSRT(content) {
-    const blocks = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split(/\n\n+/);
-    const cues = {};
-    for (const block of blocks) {
-      const lines = block.trim().split('\n');
-      for (const line of lines) {
-        if (TIMESTAMP_RE.test(line.trim())) {
-          const ts = line.trim();
-          cues[ts] = cues[ts] ? cues[ts] + '\n' + block.trim() : block.trim();
-          break;
-        }
-      }
-    }
-    return cues;
-  }
-
-  function getTextLines(cue) {
-    return cue.split('\n').filter(l =>
-      !TIMESTAMP_RE.test(l.trim()) && !/^\d+$/.test(l.trim()) && l.trim()
-    );
-  }
 
   function getPinyin(text) {
     if (!window.pinyinPro) return '';
@@ -902,26 +881,7 @@ firebase.initializeApp({
     return result;
   }
 
-  function formatTimestamp(ts) {
-    function fmt(t) {
-      const [hms] = t.split(',');
-      const [hStr, mStr, sStr] = hms.split(':');
-      const h = parseInt(hStr, 10);
-      const m = parseInt(mStr, 10);
-      const s = parseInt(sStr, 10);
-      if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-      return `${m}:${String(s).padStart(2,'0')}`;
-    }
-    const [start, end] = ts.split(' --> ');
-    return `${fmt(start.trim())} → ${fmt(end.trim())}`;
-  }
 
-  function escapeHtml(str) {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
 
   function getAllTimestamps() {
     const all = new Set([
@@ -1197,28 +1157,6 @@ firebase.initializeApp({
   const TRANSLATE_CONCURRENCY = 10;
 
   const CHUNK_MAX_ATTEMPTS = 3;
-
-  async function mapWithConcurrency(items, limit, fn) {
-    const results = new Array(items.length);
-    let next = 0;
-    let failed = false;
-    const workers = Array.from(
-      { length: Math.min(Math.max(limit, 1), items.length) },
-      async () => {
-        while (!failed && next < items.length) {
-          const i = next++;
-          try {
-            results[i] = await fn(items[i], i);
-          } catch (err) {
-            failed = true;
-            throw err;
-          }
-        }
-      }
-    );
-    await Promise.all(workers);
-    return results;
-  }
 
   async function translateChunk(timestamps, idToken, allTs, chunkIndex) {
     const start = chunkIndex * CHUNK_SIZE;
