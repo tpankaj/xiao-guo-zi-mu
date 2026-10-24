@@ -12,6 +12,53 @@ const MODEL = 'claude-haiku-5-5';
 const MAX_CHUNK_BYTES = 200 * 1024;
 const FETCH_TIMEOUT_MS = 60000;
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
+const MAX_TOKENS = 16000;
+
+// Static instructions, identical for every chunk of every file, so the API
+// can serve them from the prompt cache (Haiku 5.5 caches prefixes of 512+
+// tokens for 5 minutes). Anything that varies per chunk — notably the entry
+// count — must stay in the user message below, never in here.
+const SYSTEM_PROMPT =
+  'You are translating Chinese subtitle entries to English for SRT files.\n\n' +
+  'Input JSON has three fields:\n' +
+  '  "context_before" – entries immediately before this chunk (for context only, do not translate)\n' +
+  '  "entries" – the entries you must translate; each has "id", "ts", and "lines"\n' +
+  '  "context_after" – entries immediately after this chunk (for context only, do not translate)\n\n' +
+  'Use context_before and context_after to resolve pronouns and sentences that continue ' +
+  'across chunk boundaries, but do NOT include them in your output.\n\n' +
+  'Translation rules:\n' +
+  '- Write natural, fluent English that reads well as on-screen subtitles.\n' +
+  '- Keep each entry to at most two short lines; split long lines at natural phrase breaks.\n' +
+  '- Preserve the meaning, tone, and register of the original: formal speech stays formal, ' +
+  'slang stays casual, jokes stay jokes.\n' +
+  '- Translate idioms and chengyu by meaning, not word for word, unless a literal rendering is the joke.\n' +
+  '- Transliterate proper names with standard English spellings and use the same spelling ' +
+  'for a name in every entry.\n' +
+  '- Keep honorifics and titles appropriate to the setting; do not add explanations of cultural terms.\n' +
+  '- If a line is a sound effect or music cue in brackets or parentheses, translate it literally ' +
+  'and keep the brackets.\n' +
+  '- Keep on-screen text signs concise; translate what they say without describing the sign.\n' +
+  '- Never merge or split entries: one input entry always produces exactly one output entry, ' +
+  'even if the sentence continues.\n' +
+  '- Do not add commentary, explanations, or content that is not in the original lines.\n\n' +
+  'Consistency rules for multi-chunk files:\n' +
+  '- The same Chinese word or phrase must be translated the same way in every entry.\n' +
+  '- Match the tense and point of view established by surrounding entries.\n' +
+  '- If context entries suggest a scene change, do not carry over assumptions from earlier lines.\n\n' +
+  'Punctuation and formatting:\n' +
+  '- Use standard English punctuation; convert full-width punctuation to half-width.\n' +
+  '- Keep question marks and exclamation marks where the original has them; do not add them elsewhere.\n' +
+  '- Do not use quotation marks around translated dialogue unless the original marks it as quoted speech.\n\n' +
+  'Example input entry:\n' +
+  '{"id": 7, "ts": "00:01:12,000 --> 00:01:14,500", "lines": ["你到底想怎么样？"]}\n\n' +
+  'Example output entry:\n' +
+  '{"id": 7, "ts": "00:01:12,000 --> 00:01:14,500", "lines": ["What do you actually want?"]}\n\n' +
+  'A sentence split across two entries must still be translated entry by entry: "他说" / "他明天回来" ' +
+  'becomes "He said" / "he will be back tomorrow".\n\n' +
+  'Output: return ONLY a valid JSON array, one object per input entry. ' +
+  'Keep every "id" and "ts" exactly as given. Replace each "lines" array with the English translation. ' +
+  'Do not add, remove, merge, or reorder entries. ' +
+  'The output must be valid JSON: no trailing commas, no markdown fences, no commentary.';
 
 async function verifyAndCheckAccess(req, res) {
   const bearer = (req.headers.authorization || '').replace('Bearer ', '');
@@ -100,28 +147,21 @@ exports.translate = onRequest(
 
     console.log('translate request', { inputEntries, chunkLength: srtChunk.length, email: decoded.email });
 
-    const prompt =
-      'You are translating Chinese subtitle entries to English.\n\n' +
-      'Input JSON has three fields:\n' +
-      '  "context_before" – entries immediately before this chunk (for context only, do not translate)\n' +
-      '  "entries"        – the entries you must translate; each has "id", "ts", and "lines"\n' +
-      '  "context_after"  – entries immediately after this chunk (for context only, do not translate)\n\n' +
-      'Use context_before and context_after to understand sentences that continue across boundaries, ' +
-      'but do NOT include them in your output.\n\n' +
-      `Output: return ONLY a valid JSON array containing exactly ${inputEntries} objects — one per input entry. ` +
-      'Keep every "id" and "ts" exactly as given. Replace each "lines" array with the English translation. ' +
-      'Do not add, remove, merge, or reorder entries. ' +
-      'The output must be valid JSON: no trailing commas, no markdown fences, no commentary.\n\n' +
-      srtChunk;
-
     let anthropicRes;
     try {
       anthropicRes = await callAnthropic(anthropicKey.value(), {
         model: MODEL,
-        max_tokens: 16000,
+        max_tokens: MAX_TOKENS,
         output_config: { effort: 'low' },
         stream: false,
-        messages: [{ role: 'user', content: prompt }],
+        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+        messages: [{
+          role: 'user',
+          content:
+            `Translate the ${inputEntries} entries in "entries" now. ` +
+            `Return exactly ${inputEntries} objects.\n\n` +
+            srtChunk,
+        }],
       });
     } catch {
       res.status(502).json({ error: 'Upstream API unreachable', retryable: true });
@@ -163,7 +203,7 @@ exports.translate = onRequest(
       cacheCreation: data.usage?.cache_creation_input_tokens,
       cacheRead: data.usage?.cache_read_input_tokens,
     };
-    if (data.stop_reason === 'max_tokens' || data.usage?.output_tokens >= 16000) {
+    if (data.stop_reason === 'max_tokens' || data.usage?.output_tokens >= MAX_TOKENS) {
       console.warn('translate: output token limit reached, response likely truncated', tokenInfo);
     }
 
